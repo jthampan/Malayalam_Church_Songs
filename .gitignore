@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+*.egg-info/
+
+# Test outputs
+test_hymns_output/
+test_service_files/
+test*.pptx
+test*.txt
+debug*.py
+
+# Generated files
+*.pptx
+!template*.pptx
+malayalam_hymns_report.xlsx
+~$*.pptx
+~$*.xlsx
+
+# Images
+images/
+
+# Large data files
+OneDrive*/
+Hymns_malayalam_KK.pptx
+Kristeeya Keerthanagal.pdf
+
+# OS
+.DS_Store
+Thumbs.db
