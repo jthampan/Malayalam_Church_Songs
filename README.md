@@ -2,6 +2,16 @@
 
 Automated PowerPoint generation tool for Mar Thoma Syrian Church Malayalam Holy Communion Services.
 
+## 🚀 **Quick Start for Users**
+
+**No Python installation needed!** Use Google Colab:
+
+👉 **[CLICK HERE TO GENERATE YOUR PPT](https://colab.research.google.com/github/jthampan/Malayalam_Church_Songs/blob/main/Malayalam_Church_Songs_Generator.ipynb)**
+
+📖 **[User Guide](USER_GUIDE.md)** - Simple instructions for non-technical users
+
+---
+
 ## Features
 
 - 🎵 **Automated Slide Generation**: Generate complete service presentations from hymn numbers
