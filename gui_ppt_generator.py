@@ -44,6 +44,7 @@ class PPTGeneratorGUI:
         
         # Add trace to auto-update PPT count when folder path changes
         self.source_folder.trace_add('write', lambda *args: self.update_ppt_count())
+        self.language.trace_add('write', lambda *args: self.update_ppt_count())
         
         # Create UI first
         self.create_ui()
