@@ -787,6 +787,7 @@ def clone_slides_from_source(source_pptx_path, slide_indices, target_prs,
 
         # Always remove QR code and UEN from source slides (in case source was from offertory)
         remove_qr_and_uen(new_slide)
+        remove_footer_text(new_slide)
 
         # Update title bar text based on which section this hymn is being added to
         update_title_bar_text(new_slide, song_label, hymn_num, song_name)
@@ -997,6 +998,20 @@ def remove_qr_and_uen(slide):
                     sp.getparent().remove(sp)
         except Exception:
             continue
+
+
+def remove_footer_text(slide):
+    """Remove footer text like "B/A: 1 of 2" or "Communion 2: 1 of 7"."""
+    footer_pattern = re.compile(r".+?:\s*\d+\s+of\s+\d+", re.IGNORECASE)
+    for shape in list(slide.shapes):
+        if not shape.has_text_frame:
+            continue
+        text = shape.text_frame.text.strip()
+        if not text:
+            continue
+        if footer_pattern.fullmatch(text) or footer_pattern.search(text):
+            sp = shape._element
+            sp.getparent().remove(sp)
 
 
 def clone_slide_exact(src_slide, target_prs, blank_layout):
