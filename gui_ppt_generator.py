@@ -384,6 +384,39 @@ class PPTGeneratorGUI:
     
     def get_service_text(self):
         return self.service_text.get("1.0", tk.END).strip()
+
+    def _normalize_service_text(self, raw_text):
+        lines = raw_text.splitlines()
+        normalized_lines = []
+        total_songs = 0
+        communion_songs = 0
+
+        for line in lines:
+            cleaned = line.strip()
+            if not cleaned:
+                continue
+            if cleaned.startswith("#"):
+                normalized_lines.append(cleaned)
+                continue
+
+            if cleaned.lower() == "message":
+                normalized_lines.append("Message")
+                total_songs += 1
+                continue
+
+            parts = cleaned.split("|")
+            if len(parts) >= 2:
+                hymn_num = parts[0].strip()
+                label = parts[1].strip()
+                title_hint = parts[2].strip() if len(parts) > 2 else ""
+                normalized_lines.append(f"{hymn_num}|{label}|{title_hint}")
+                total_songs += 1
+                if label.lower() in ("communion", "holy communion"):
+                    communion_songs += 1
+            else:
+                normalized_lines.append(cleaned)
+
+        return "\n".join(normalized_lines), total_songs, communion_songs
     
     def log(self, message):
         """Add message to log"""
@@ -466,10 +499,12 @@ class PPTGeneratorGUI:
                 raise Exception("Generator script not found. Please ensure generate_hcs_ppt.py is in the same folder as this program.")
             
             # Get full paths
-            service_text = self.get_service_text()
+            service_text_raw = self.get_service_text()
+            service_text, total_songs, communion_songs = self._normalize_service_text(service_text_raw)
             
             # Debug logging
             self.log("📄 Service list: (input box)")
+            self.log(f"🧮 Parsed songs: {total_songs} (Communion: {communion_songs})")
             self.log(f"📁 Source folder: {self.source_folder.get()}")
             self.log(f"🌐 Language: {self.language.get()}")
             self.log(f"💾 Output: {output_file}\n")
