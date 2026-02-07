@@ -43,38 +43,6 @@ class PPTGeneratorGUI:
     
     def create_ui(self):
         # Header
-            # Run the generator in-process to avoid relaunching the GUI exe
-            original_argv = sys.argv[:]
-            original_cwd = os.getcwd()
-            stdout_buf = StringIO()
-            stderr_buf = StringIO()
-
-            try:
-                try:
-                    import generate_hcs_ppt
-                except Exception as e:
-                    raise Exception(
-                        "Cannot load generate_hcs_ppt.py. Please ensure it is packaged with the app.\n\n"
-                        f"Error: {str(e)}"
-                    )
-
-                sys.argv = [script_path, "--batch", str(temp_batch_file), output_file]
-                os.chdir(self.source_folder.get())
-
-                with redirect_stdout(stdout_buf), redirect_stderr(stderr_buf):
-                    generate_hcs_ppt.main()
-            finally:
-                sys.argv = original_argv
-                os.chdir(original_cwd)
-
-            generator_stdout = stdout_buf.getvalue().strip()
-            generator_stderr = stderr_buf.getvalue().strip()
-
-            if generator_stdout:
-                self.log(generator_stdout)
-            if generator_stderr:
-                self.log("\n⚠ Generator warnings:\n" + generator_stderr)
-        
         # Main content
         main_frame = tk.Frame(self.root, padx=20, pady=20)
         main_frame.pack(fill=tk.BOTH, expand=True)
