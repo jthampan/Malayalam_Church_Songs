@@ -563,34 +563,69 @@ class PPTGeneratorGUI:
             if not script_path:
                 raise Exception("Generator script not found. Please ensure generate_hcs_ppt.py is in the same folder as this program.")
             
-            self.log(f"📄 Service file: {os.path.basename(self.service_file.get())}")
+            # Get full paths
+            service_file_path = self.service_file.get()
+            
+            # Debug logging - full paths
+            self.log(f"📄 Service file: {service_file_path}")
             self.log(f"📁 Source folder: {self.source_folder.get()}")
             self.log(f"🌐 Language: {self.language.get()}")
             self.log(f"💾 Output: {output_file}\n")
             
+            # Validate service file exists and is accessible
+            if not os.path.isfile(service_file_path):
+                raise Exception(
+                    f"Service file not found or not accessible:\n"
+                    f"{service_file_path}\n\n"
+                    f"Please ensure the file exists and you have permission to read it."
+                )
+            
             # Create a temporary batch file that includes language directive
-            temp_batch_file = Path.home() / "Desktop" / ".temp_service.txt"
+            desktop_path = Path.home() / "Desktop"
+            
+            # Ensure Desktop folder exists
+            if not desktop_path.exists():
+                try:
+                    desktop_path.mkdir(parents=True, exist_ok=True)
+                    self.log(f"📁 Created Desktop folder: {desktop_path}")
+                except Exception as e:
+                    raise Exception(
+                        f"Cannot create Desktop folder: {desktop_path}\n\n"
+                        f"Error: {str(e)}\n\n"
+                        f"Please ensure you have write permissions to your home directory."
+                    )
+            
+            temp_batch_file = desktop_path / ".temp_service.txt"
+            self.log(f"📝 Creating temp file: {temp_batch_file}")
             
             try:
+                # Copy original service file content first
+                self.log(f"📖 Reading service file: {service_file_path}")
+                try:
+                    with open(service_file_path, 'r', encoding='utf-8') as orig_f:
+                        service_content = orig_f.read()
+                except (FileNotFoundError, OSError, PermissionError) as e:
+                    raise Exception(
+                        f"Cannot read service file: {service_file_path}\n\n"
+                        f"Error: {str(e)}\n\n"
+                        "If using WSL path (//wsl$/...), please copy the file to Windows Desktop and select it from there."
+                    )
+                
+                # Write to temp file
+                self.log(f"💾 Writing temp file...")
                 with open(temp_batch_file, 'w', encoding='utf-8') as temp_f:
                     # Add language directive
                     temp_f.write(f"# Language: {self.language.get()}\n")
+                    temp_f.write(service_content)
                     
-                    # Copy original service file content
-                    try:
-                        with open(self.service_file.get(), 'r', encoding='utf-8') as orig_f:
-                            temp_f.write(orig_f.read())
-                    except (FileNotFoundError, OSError, PermissionError) as e:
-                        raise Exception(
-                            f"Cannot read service file: {self.service_file.get()}\n\n"
-                            f"Error: {str(e)}\n\n"
-                            "If using WSL path (//wsl$/...), please copy the file to Windows Desktop and select it from there."
-                        )
+                self.log(f"✅ Temp file created successfully\n")
+                    
             except Exception as e:
                 # Clean up temp file if it was created
                 try:
                     if temp_batch_file.exists():
                         temp_batch_file.unlink()
+                        self.log(f"🗑️ Cleaned up temp file")
                 except:
                     pass
                 raise e
