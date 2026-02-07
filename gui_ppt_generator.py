@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Malayalam Church Songs PPT Generator - GUI Version
-Simple Windows application for non-technical users
+Simple Windows application
 """
 
 import tkinter as tk
