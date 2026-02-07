@@ -536,13 +536,6 @@ class PPTGeneratorGUI:
                     cwd=self.source_folder.get(),  # Run from source folder to find PPTs
                     timeout=300  # 5 minute timeout
                 )
-            finally:
-                # Clean up temporary file
-                try:
-                    if temp_batch_file.exists():
-                        temp_batch_file.unlink()
-                except:
-                    pass
             except subprocess.TimeoutExpired:
                 self.log("\n" + "="*70)
                 self.log("⏱️ TIMEOUT ERROR")
@@ -556,7 +549,22 @@ class PPTGeneratorGUI:
                 self.log("  1. OneDrive files are fully downloaded")
                 self.log("  2. Source folder is on local drive (not network)")
                 self.log("  3. PowerPoint files are not corrupted")
+                
+                # Clean up temporary file
+                try:
+                    if temp_batch_file.exists():
+                        temp_batch_file.unlink()
+                except:
+                    pass
+                
                 raise Exception("Generation timed out after 5 minutes")
+            finally:
+                # Clean up temporary file
+                try:
+                    if temp_batch_file.exists():
+                        temp_batch_file.unlink()
+                except:
+                    pass
             
             # Show output
             if result.stdout:
