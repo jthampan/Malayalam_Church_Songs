@@ -31,11 +31,11 @@ class PPTGeneratorGUI:
         # Add trace to auto-update PPT count when folder path changes
         self.source_folder.trace_add('write', lambda *args: self.update_ppt_count())
         
-        # Load saved settings
-        self.load_settings()
-        
-        # Create UI
+        # Create UI first
         self.create_ui()
+        
+        # Load saved settings (after UI is created so logging works)
+        self.load_settings()
         
         # Mark loading complete
         self._is_loading = False
