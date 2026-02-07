@@ -1421,6 +1421,7 @@ def update_summary_slide_from_slides(prs, song_list):
     
     # Scan slides to find first Manglish line for each section
     hymn_titles = {}  # {hymn_num: first_line}
+    fallback_titles = {}  # {hymn_num: first_line}
     current_hymn = None
     
     for slide_idx in range(1, len(prs.slides)):
@@ -1469,6 +1470,8 @@ def update_summary_slide_from_slides(prs, song_list):
                     continue
                 if re.match(r"^(Trinity|Message|Holy|Mar Thoma)", text):
                     continue
+                if "Hymn" in text:
+                    continue
                 
                 # Get first line (handle both \n and \x0b vertical tab)
                 first_line = text.replace('\x0b', '\n').split('\n')[0].strip()
@@ -1503,12 +1506,38 @@ def update_summary_slide_from_slides(prs, song_list):
                 
                 hymn_titles[current_hymn] = title_words
                 break  # Found it for this hymn, move to next slide
+
+        # Fallback: store a readable line even if Manglish rules fail
+        if current_hymn and hymn_titles[current_hymn] == "" and current_hymn not in fallback_titles:
+            for shape in slide.shapes:
+                if not shape.has_text_frame:
+                    continue
+                text = shape.text_frame.text.strip()
+                if not text or len(text) < 5:
+                    continue
+                if re.search(r"(Opening|Thanksgiving|ThanksGiving|Offertory|Confession|Communion|Closing|Dedication|B/A)", text, re.IGNORECASE):
+                    continue
+                if re.match(r"^\d+\s*:\s*\d+\s+of\s+\d+", text):
+                    continue
+                if re.match(r"^(Trinity|Message|Holy|Mar Thoma)", text):
+                    continue
+                if "Hymn" in text:
+                    continue
+                first_line = text.replace('\x0b', '\n').split('\n')[0].strip()
+                if len(first_line) < 5:
+                    continue
+                words = first_line.split()
+                title_words = ' '.join(words[:3]) if len(words) >= 3 else ' '.join(words[:2])
+                fallback_titles[current_hymn] = title_words
+                break
     
     # Update song_list with extracted titles
     for song in song_list:
         hymn_num = str(song.get('hymn_num', ''))
         if hymn_num in hymn_titles and hymn_titles[hymn_num]:
             song['title_hint'] = hymn_titles[hymn_num]
+        elif hymn_num in fallback_titles and fallback_titles[hymn_num]:
+            song['title_hint'] = fallback_titles[hymn_num]
     
     # Now rebuild summary with titles
     summary_slide = prs.slides[0]
