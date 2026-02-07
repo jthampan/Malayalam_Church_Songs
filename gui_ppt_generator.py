@@ -217,14 +217,57 @@ class PPTGeneratorGUI:
             initialdir=str(Path.home())
         )
         if folder:
+            # Validate folder has PPT files
+            ppt_files = list(Path(folder).glob("*.ppt*"))
+            
+            if len(ppt_files) == 0:
+                response = messagebox.askyesno(
+                    "No PowerPoint Files Found",
+                    f"Warning: No PowerPoint files found in:\n\n{folder}\n\n"
+                    "This folder appears to be empty or doesn't contain .pptx/.ppt files.\n\n"
+                    "Common issues:\n"
+                    "• Wrong folder selected\n"
+                    "• OneDrive files are cloud-only (not downloaded)\n"
+                    "• Files have different extensions\n\n"
+                    "If using OneDrive:\n"
+                    "→ Right-click folder → 'Always keep on this device'\n"
+                    "→ Wait for sync to complete\n\n"
+                    "Do you want to use this folder anyway?"
+                )
+                if not response:
+                    return
+            else:
+                # Check for potential OneDrive cloud-only files
+                if "onedrive" in folder.lower():
+                    sample_file = ppt_files[0]
+                    file_size = os.path.getsize(sample_file)
+                    if file_size < 1000:  # Suspiciously small - might be placeholder
+                        messagebox.showwarning(
+                            "OneDrive Sync Warning",
+                            f"Warning: Files may not be fully downloaded!\n\n"
+                            f"Sample file size: {file_size} bytes (very small)\n\n"
+                            "OneDrive may be showing cloud-only placeholders.\n\n"
+                            "To fix:\n"
+                            "1. Right-click the folder\n"
+                            "2. Select 'Always keep on this device'\n"
+                            "3. Wait for OneDrive to download all files\n"
+                            "4. Try again\n\n"
+                            "Folder will be saved, but generation may fail until files are downloaded."
+                        )
+            
             self.source_folder.set(folder)
             self.save_settings()
             self.log(f"✅ Source folder set: {folder}")
-            messagebox.showinfo(
-                "Setup Complete",
-                "Source folder saved! You won't need to select this again.\n\n"
-                "Now you can generate presentations by selecting a service file and clicking Generate."
-            )
+            self.log(f"   Found {len(ppt_files)} PowerPoint files")
+            
+            if len(ppt_files) > 0:
+                messagebox.showinfo(
+                    "Setup Complete",
+                    f"Source folder saved!\n\n"
+                    f"Found {len(ppt_files)} PowerPoint files.\n\n"
+                    "You won't need to select this again.\n\n"
+                    "Now you can generate presentations by selecting a service file and clicking Generate."
+                )
     
     def sync_from_onedrive(self):
         """Download files from OneDrive link"""
@@ -300,11 +343,50 @@ class PPTGeneratorGUI:
                 "Please select your source PPT folder first (One-Time Setup section)."
             )
             return
+        
+        # Validate source folder exists
+        if not os.path.exists(self.source_folder.get()):
+            messagebox.showerror(
+                "Source Folder Not Found",
+                f"The source folder no longer exists:\n\n{self.source_folder.get()}\n\n"
+                "This can happen if:\n"
+                "• OneDrive folder was moved or deleted\n"
+                "• OneDrive is not synced\n"
+                "• External drive was disconnected\n\n"
+                "Please:\n"
+                "1. Check OneDrive is synced and folder exists\n"
+                "2. Use 'Browse' button to select the correct folder"
+            )
+            return
+        
+        # Validate source folder has PPT files
+        ppt_files = list(Path(self.source_folder.get()).glob("*.ppt*"))
+        if len(ppt_files) == 0:
+            messagebox.showerror(
+                "No PowerPoint Files Found",
+                f"No PowerPoint files found in:\n\n{self.source_folder.get()}\n\n"
+                "Please make sure:\n"
+                "• You selected the correct folder with hymn PPT files\n"
+                "• Files have .pptx or .ppt extension\n"
+                "• OneDrive files are downloaded (not cloud-only)\n\n"
+                "If using OneDrive:\n"
+                "→ Right-click folder → 'Always keep on this device'"
+            )
+            return
             
         if not self.service_file.get():
             messagebox.showerror(
                 "Missing Service File",
                 "Please select your service text file."
+            )
+            return
+        
+        # Validate service file exists
+        if not os.path.exists(self.service_file.get()):
+            messagebox.showerror(
+                "Service File Not Found",
+                f"The service file no longer exists:\n\n{self.service_file.get()}\n\n"
+                "Please select the file again using the 'Browse' button."
             )
             return
         
@@ -336,13 +418,29 @@ class PPTGeneratorGUI:
             self.log(f"📁 Source folder: {self.source_folder.get()}")
             self.log(f"💾 Output: {output_file}\n")
             
-            # Run the generator
-            result = subprocess.run(
-                [sys.executable, script_path, "--batch", self.service_file.get(), output_file],
-                capture_output=True,
-                text=True,
-                cwd=self.source_folder.get()  # Run from source folder to find PPTs
-            )
+            # Run the generator with timeout
+            try:
+                result = subprocess.run(
+                    [sys.executable, script_path, "--batch", self.service_file.get(), output_file],
+                    capture_output=True,
+                    text=True,
+                    cwd=self.source_folder.get(),  # Run from source folder to find PPTs
+                    timeout=300  # 5 minute timeout
+                )
+            except subprocess.TimeoutExpired:
+                self.log("\n" + "="*70)
+                self.log("⏱️ TIMEOUT ERROR")
+                self.log("="*70)
+                self.log("\nGeneration took too long (>5 minutes).")
+                self.log("\nPossible causes:")
+                self.log("  • Very large PPT files")
+                self.log("  • Network drive is slow")
+                self.log("  • OneDrive is not fully synced")
+                self.log("\nPlease check:")
+                self.log("  1. OneDrive files are fully downloaded")
+                self.log("  2. Source folder is on local drive (not network)")
+                self.log("  3. PowerPoint files are not corrupted")
+                raise Exception("Generation timed out after 5 minutes")
             
             # Show output
             if result.stdout:
@@ -375,14 +473,82 @@ class PPTGeneratorGUI:
                 self.log("❌ ERROR")
                 self.log("="*70)
                 self.log("\nGeneration failed. Please check the messages above.")
+                
+                # Provide helpful error analysis
+                error_hints = []
+                
+                if result.stderr and "not found" in result.stderr.lower():
+                    error_hints.append("• Some hymn numbers were not found in your PPT files")
+                    error_hints.append("• Check that the hymn numbers in your service file are correct")
+                    error_hints.append("• Verify all required PPT files are in the source folder")
+                
+                if result.stderr and ("permission" in result.stderr.lower() or "access" in result.stderr.lower()):
+                    error_hints.append("• Permission denied accessing files")
+                    error_hints.append("• Check OneDrive files are not locked or in use")
+                    error_hints.append("• Close any open PowerPoint files")
+                
+                if not os.path.exists(output_file):
+                    error_hints.append("• Output file was not created")
+                    error_hints.append("• Check you have write permission to Desktop")
+                    error_hints.append("• Verify source PPT files are readable")
+                
+                # Check for OneDrive sync issues
+                source_path = Path(self.source_folder.get())
+                if "onedrive" in str(source_path).lower():
+                    # Check if files might be cloud-only
+                    ppt_files = list(source_path.glob("*.ppt*"))
+                    if ppt_files:
+                        sample_file = ppt_files[0]
+                        # Check if file size is suspiciously small (might be cloud placeholder)
+                        if os.path.getsize(sample_file) < 1000:
+                            error_hints.append("• OneDrive files may not be fully downloaded!")
+                            error_hints.append("→ Right-click source folder → 'Always keep on this device'")
+                            error_hints.append("→ Wait for OneDrive to finish syncing")
+                
+                if error_hints:
+                    self.log("\n💡 Possible issues:")
+                    for hint in error_hints:
+                        self.log(hint)
+                
                 messagebox.showerror(
                     "Generation Failed",
-                    "Failed to generate PowerPoint. Please check the output log for details."
+                    "Failed to generate PowerPoint.\n\n"
+                    "Please check the output log for details.\n\n"
+                    "Common issues:\n"
+                    "• Hymn numbers not found in PPT files\n"
+                    "• OneDrive files not fully downloaded\n"
+                    "• Source folder is inaccessible\n"
+                    "• Service file format is incorrect"
                 )
                 
         except Exception as e:
             self.log(f"\n❌ ERROR: {str(e)}")
-            messagebox.showerror("Error", f"An error occurred:\n\n{str(e)}")
+            
+            # Provide context-specific error messages
+            error_msg = str(e)
+            help_text = "\n\nPlease check:\n"
+            
+            if "timeout" in error_msg.lower():
+                help_text += "• OneDrive files are fully downloaded\n"
+                help_text += "• Source folder is on local drive\n"
+                help_text += "• Network connection is stable"
+            elif "not found" in error_msg.lower():
+                help_text += "• Source folder exists and is accessible\n"
+                help_text += "• OneDrive is synced properly\n"
+                help_text += "• Files are not cloud-only"
+            elif "permission" in error_msg.lower():
+                help_text += "• You have access to the OneDrive folder\n"
+                help_text += "• Files are not locked by another program\n"
+                help_text += "• Desktop is writable"
+            else:
+                help_text += "• Source folder has PPT files\n"
+                help_text += "• Service file format is correct\n"
+                help_text += "• OneDrive is properly synced"
+            
+            messagebox.showerror(
+                "Error", 
+                f"An error occurred:\n\n{error_msg}{help_text}"
+            )
             
         finally:
             # Re-enable button and stop progress
