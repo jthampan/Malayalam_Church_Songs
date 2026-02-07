@@ -45,6 +45,7 @@ PyInstaller.__main__.run([
     '--name=Church_Songs_Generator',   # Executable name
     '--icon=NONE',                     # No icon (can add later)
     '--add-data=generate_hcs_ppt.py;.',  # Include main generator
+    '--add-data=images;images',        # Include images folder (QR + Holy Communion)
     '--clean',                         # Clean cache
     '--noconfirm',                     # Overwrite without asking
 ])
