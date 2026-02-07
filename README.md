@@ -4,23 +4,12 @@ Automated PowerPoint generation tool for Mar Thoma Syrian Church Malayalam Holy 
 
 ## 🚀 **Quick Start for Users**
 
-### Option 1: Web-Based (Any Device) 🌐
-**No installation needed!** Use Google Colab in your browser:
-
-👉 **[CLICK HERE TO GENERATE YOUR PPT](https://colab.research.google.com/github/jthampan/Malayalam_Church_Songs/blob/main/Malayalam_Church_Songs_Generator.ipynb)**
-
-📖 **[User Guide](USER_GUIDE.md)** - Simple instructions for non-technical users
-
-### Option 2: Windows Executable 🖥️
+### Windows Executable 🖥️
 **Standalone Windows app** - No browser, no internet needed:
 
 📥 **[Download Windows .exe](WINDOWS_EXE_GUIDE.md)** - Double-click and go!
 
 📖 **[Windows Guide](WINDOWS_EXE_GUIDE.md)** - Installation and usage instructions
-
-**Which one should I use?**
-- ✅ Use **Google Colab** if you want to work from any device (Windows, Mac, Linux, Chromebook, tablet)
-- ✅ Use **Windows .exe** if you prefer a traditional desktop app with no browser/internet dependency
 
 ---
 

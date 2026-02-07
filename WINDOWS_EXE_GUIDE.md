@@ -112,7 +112,7 @@ Create a text file (use Notepad) with this format:
 **A:** On your Desktop with a filename like: `HCS_Malayalam_07_Feb_2026.pptx`
 
 ### Q: Can I use this on Mac or Linux?
-**A:** This .exe is Windows-only. Mac/Linux users should use the Google Colab version instead.
+**A:** This .exe is Windows-only.
 
 ### Q: What if I get a "Windows protected your PC" warning?
 **A:** This is normal for unsigned executables. Click "More info" then "Run anyway". The software is safe!
