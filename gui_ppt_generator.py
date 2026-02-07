@@ -17,13 +17,14 @@ class PPTGeneratorGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Malayalam Church Songs - PPT Generator")
-        self.root.geometry("900x600")  # Wide enough for long paths
+        self.root.geometry("900x580")  # Wide enough for long paths, height adjusted
         self.root.resizable(False, False)
         
         # Variables
         self.service_file = tk.StringVar()
         self.source_folder = tk.StringVar()
         self.language = tk.StringVar(value="Malayalam")  # Default to Malayalam
+        self.ppt_count = tk.StringVar(value="No folder selected")
         self.settings_file = Path.home() / ".church_ppt_settings.txt"
         
         # Load saved settings
@@ -99,6 +100,16 @@ class PPTGeneratorGUI:
             padx=10
         )
         source_btn.grid(row=1, column=2, pady=5)
+        
+        # PPT count display
+        ppt_count_label = tk.Label(
+            main_frame,
+            textvariable=self.ppt_count,
+            font=("Arial", 9),
+            fg="#27ae60",
+            anchor=tk.W
+        )
+        ppt_count_label.grid(row=1, column=3, columnspan=2, sticky=tk.W, padx=(10, 0))
         
         # Option 2: OneDrive link
         onedrive_label = tk.Label(main_frame, text="Option 2 - OneDrive Link:", font=("Arial", 10))
@@ -180,13 +191,13 @@ class PPTGeneratorGUI:
         
         self.log_text = scrolledtext.ScrolledText(
             main_frame,
-            height=12,
+            height=9,
             width=105,
             state="disabled",
             wrap=tk.CHAR,
             font=("Consolas", 8)
         )
-        self.log_text.grid(row=10, column=0, columnspan=5, pady=5, sticky="ew")
+        self.log_text.grid(row=10, column=0, columnspan=5, pady=(5, 10), sticky="ew")
         
         # Footer with help
         footer_frame = tk.Frame(self.root, bg="#ecf0f1", height=40)
@@ -211,6 +222,13 @@ class PPTGeneratorGUI:
                     if os.path.isdir(saved_folder):
                         self.source_folder.set(saved_folder)
                         self.log("✅ Loaded saved source folder: " + saved_folder)
+                        
+                        # Count PPT files
+                        ppt_files = list(Path(saved_folder).glob("**/*.ppt*"))
+                        if len(ppt_files) > 0:
+                            self.ppt_count.set(f"✓ Found {len(ppt_files)} PPT files (all subfolders)")
+                        else:
+                            self.ppt_count.set("⚠ No PPT files found")
             except:
                 pass
                 
@@ -305,7 +323,10 @@ class PPTGeneratorGUI:
                     "Do you want to use this folder anyway?"
                 )
                 if not response:
+                    self.ppt_count.set("✗ Folder not selected")
                     return
+                else:
+                    self.ppt_count.set("⚠ No PPT files found")
             else:
                 # Check for potential OneDrive cloud-only files
                 if "onedrive" in detected_folder.lower():
@@ -333,19 +354,14 @@ class PPTGeneratorGUI:
             
             if folder != detected_folder:
                 self.log(f"   (Auto-detected from: {folder})")
+            self.log(f"   Will search all year folders (2024, 2025, 2026, etc.)")
+            self.log("")
             
+            # Update PPT count display
             if len(ppt_files) > 0:
-                match_msg = ""
-                if folder != detected_folder:
-                    match_msg = f"\n✨ Smart Detection:\nYou selected: {Path(folder).name}\nUsing {self.language.get()} folder: {Path(detected_folder).name}\nSearching all year subfolders (2024, 2025, 2026, etc.)\n"
-                
-                messagebox.showinfo(
-                    "Setup Complete",
-                    f"Source folder saved!\n\n"
-                    f"Found {len(ppt_files)} PowerPoint files across all subfolders.{match_msg}\n"
-                    "You won't need to select this again.\n\n"
-                    "Now you can generate presentations by selecting a service file and clicking Generate."
-                )
+                self.ppt_count.set(f"✓ Found {len(ppt_files)} PPT files (all subfolders)")
+            else:
+                self.ppt_count.set("⚠ No PPT files found")
     
     def sync_from_onedrive(self):
         """Download files from OneDrive link"""
