@@ -15,6 +15,7 @@ from io import StringIO
 from datetime import datetime
 import threading
 import re
+import subprocess
 
 class PPTGeneratorGUI:
     def __init__(self, root):
@@ -551,6 +552,8 @@ class PPTGeneratorGUI:
             output_file = str(Path.home() / "Desktop" / f"HCS_Malayalam_{date_str}.pptx")
             if os.path.exists(output_file):
                 try:
+                    # Force close PowerPoint to release file lock
+                    self._force_close_powerpoint()
                     os.remove(output_file)
                     self.log(f"🧹 Removed existing output: {output_file}")
                 except Exception as e:
@@ -771,6 +774,21 @@ class PPTGeneratorGUI:
             # Re-enable button and stop progress
             self.progress.stop()
             self.generate_btn.config(state="normal", text="🎵 GENERATE POWERPOINT")
+    
+    def _force_close_powerpoint(self):
+        """Force close all PowerPoint instances to release file locks"""
+        try:
+            # Kill all PowerPoint processes
+            subprocess.run(
+                ["taskkill", "/F", "/IM", "POWERPNT.EXE"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5
+            )
+            self.log("🔓 Closed PowerPoint to release file lock")
+        except Exception:
+            # Silently ignore if PowerPoint isn't running
+            pass
     
     def _find_generator_script(self):
         """Find generate_hcs_ppt.py in various locations"""
