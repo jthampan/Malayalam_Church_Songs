@@ -8,6 +8,11 @@ env/
 venv/
 *.egg-info/
 
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
+
 # Test outputs
 test_hymns_output/
 test_service_files/
