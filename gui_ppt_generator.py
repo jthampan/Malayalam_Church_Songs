@@ -19,7 +19,7 @@ class PPTGeneratorGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Malayalam Church Songs - PPT Generator")
-        self.root.geometry("900x580")  # Wide enough for long paths, height adjusted
+        self.root.geometry("980x640")  # Larger to fit output box comfortably
         self.root.resizable(False, False)
         
         # Variables
@@ -140,16 +140,13 @@ class PPTGeneratorGUI:
         separator = ttk.Separator(main_frame, orient=tk.HORIZONTAL)
         separator.grid(row=4, column=0, columnspan=5, sticky="ew", pady=20)
         
-        # Section 2: Generate PPT (Every time)
+        # Section 2: Service Songs List
         generate_label = tk.Label(
             main_frame,
-            text="🎉 Generate PowerPoint (Every Time)",
+            text="🎉 Service Songs List",
             font=("Arial", 12, "bold")
         )
         generate_label.grid(row=5, column=0, columnspan=5, sticky=tk.W, pady=(0, 10))
-        
-        service_label = tk.Label(main_frame, text="Service List:", font=("Arial", 10))
-        service_label.grid(row=6, column=0, sticky=tk.W, pady=5)
         
         self.service_text = scrolledtext.ScrolledText(
             main_frame,
@@ -158,23 +155,24 @@ class PPTGeneratorGUI:
             wrap=tk.WORD,
             font=("Consolas", 9)
         )
-        self.service_text.grid(row=6, column=1, columnspan=4, padx=5, pady=5, sticky="ew")
+        self.service_text.grid(row=6, column=0, columnspan=5, padx=5, pady=5, sticky="ew")
         self.service_text.insert("1.0", self.default_service_text)
         self.service_text.edit_modified(False)
         self.service_text.bind("<<Modified>>", self._on_service_text_change)
         
-        # Generate button (big and prominent)
+        # Generate button (small and centered)
         self.generate_btn = tk.Button(
             main_frame,
             text="🎵 GENERATE POWERPOINT",
             command=self.generate_ppt,
             bg="#27ae60",
             fg="white",
-            font=("Arial", 14, "bold"),
-            height=2,
+            font=("Arial", 11, "bold"),
+            width=26,
+            height=1,
             cursor="hand2"
         )
-        self.generate_btn.grid(row=7, column=0, columnspan=5, pady=20, sticky="ew")
+        self.generate_btn.grid(row=7, column=0, columnspan=5, pady=14)
         
         # Progress bar
         self.progress = ttk.Progressbar(main_frame, mode='indeterminate')
