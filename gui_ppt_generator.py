@@ -8,6 +8,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 import sys
 import os
+import json
 from pathlib import Path
 from contextlib import redirect_stdout, redirect_stderr
 from io import StringIO
@@ -22,12 +23,22 @@ class PPTGeneratorGUI:
         self.root.resizable(False, False)
         
         # Variables
-        self.service_file = tk.StringVar()
         self.source_folder = tk.StringVar()
         self.language = tk.StringVar(value="Malayalam")  # Default to Malayalam
         self.ppt_count = tk.StringVar(value="No folder selected")
         self.settings_file = Path.home() / ".church_ppt_settings.txt"
         self._is_loading = True  # Flag to track initial load
+        self.default_service_text = (
+            "# Format: hymn_num|label|title_hint\n"
+            "# Example:\n"
+            "91|Opening|\n"
+            "110|ThanksGiving|\n"
+            "420|Offertory|\n"
+            "Message\n"
+            "211|Confession|\n"
+            "313|Communion|\n"
+            "427|Closing|\n"
+        )
         
         # Add trace to auto-update PPT count when folder path changes
         self.source_folder.trace_add('write', lambda *args: self.update_ppt_count())
@@ -137,22 +148,20 @@ class PPTGeneratorGUI:
         )
         generate_label.grid(row=5, column=0, columnspan=5, sticky=tk.W, pady=(0, 10))
         
-        service_label = tk.Label(main_frame, text="Service File:", font=("Arial", 10))
+        service_label = tk.Label(main_frame, text="Service List:", font=("Arial", 10))
         service_label.grid(row=6, column=0, sticky=tk.W, pady=5)
         
-        service_entry = tk.Entry(main_frame, textvariable=self.service_file, width=40, state="readonly")
-        service_entry.grid(row=6, column=1, padx=5, pady=5)
-        
-        service_btn = tk.Button(
+        self.service_text = scrolledtext.ScrolledText(
             main_frame,
-            text="Browse...",
-            command=self.select_service_file,
-            bg="#3498db",
-            fg="white",
-            font=("Arial", 9, "bold"),
-            padx=10
+            height=7,
+            width=72,
+            wrap=tk.WORD,
+            font=("Consolas", 9)
         )
-        service_btn.grid(row=6, column=2, pady=5)
+        self.service_text.grid(row=6, column=1, columnspan=4, padx=5, pady=5, sticky="ew")
+        self.service_text.insert("1.0", self.default_service_text)
+        self.service_text.edit_modified(False)
+        self.service_text.bind("<<Modified>>", self._on_service_text_change)
         
         # Generate button (big and prominent)
         self.generate_btn = tk.Button(
@@ -204,7 +213,22 @@ class PPTGeneratorGUI:
         if self.settings_file.exists():
             try:
                 with open(self.settings_file, 'r') as f:
-                    saved_folder = f.read().strip()
+                    raw = f.read().strip()
+                if raw.startswith("{"):
+                    data = json.loads(raw)
+                    saved_folder = data.get("source_folder", "").strip()
+                    saved_text = data.get("service_text", "").strip()
+                    saved_language = data.get("language", "Malayalam").strip()
+                    if saved_folder and os.path.isdir(saved_folder):
+                        self.source_folder.set(saved_folder)
+                    if saved_text:
+                        self.service_text.delete("1.0", tk.END)
+                        self.service_text.insert("1.0", saved_text)
+                        self.service_text.edit_modified(False)
+                    if saved_language in ("Malayalam", "English"):
+                        self.language.set(saved_language)
+                else:
+                    saved_folder = raw
                     if os.path.isdir(saved_folder):
                         self.source_folder.set(saved_folder)
                         # PPT count will be updated automatically by trace callback
@@ -214,10 +238,23 @@ class PPTGeneratorGUI:
     def save_settings(self):
         """Save source folder for next time"""
         try:
+            data = {
+                "source_folder": self.source_folder.get().strip(),
+                "service_text": self.get_service_text().strip(),
+                "language": self.language.get().strip(),
+            }
             with open(self.settings_file, 'w') as f:
-                f.write(self.source_folder.get())
+                f.write(json.dumps(data))
         except:
             pass
+
+    def _on_service_text_change(self, event=None):
+        if self._is_loading:
+            self.service_text.edit_modified(False)
+            return
+        if self.service_text.edit_modified():
+            self.service_text.edit_modified(False)
+            self.save_settings()
     
     def update_ppt_count(self):
         """Check the current source folder path and update PPT count display"""
@@ -412,34 +449,8 @@ class PPTGeneratorGUI:
             self.log("")
             self.log("💡 For automatic sync, use OneDrive Desktop (see help)")
     
-    def select_service_file(self):
-        """Select service text file"""
-        # Try to use Desktop first (more likely to be Windows path)
-        initial_dir = str(Path.home() / "Desktop")
-        if not os.path.isdir(initial_dir):
-            initial_dir = str(Path.home() / "Documents")
-        
-        file = filedialog.askopenfilename(
-            title="Select your service file (use Windows path, not WSL)",
-            filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
-            initialdir=initial_dir
-        )
-        if file:
-            # Check for WSL path
-            if file.startswith("//wsl$") or "/wsl/" in file.lower():
-                messagebox.showwarning(
-                    "WSL Path Detected",
-                    f"⚠️ Warning: WSL file path detected!\n\n"
-                    f"Path: {file}\n\n"
-                    "This may cause errors during generation.\n\n"
-                    "📌 Recommended Solution:\n"
-                    "1. Copy your service file to Windows Desktop\n"
-                    "2. Browse and select it from Desktop\n\n"
-                    "Or use a path like: C:\\Users\\...\\file.txt"
-                )
-            
-            self.service_file.set(file)
-            self.log(f"✅ Service file selected: {os.path.basename(file)}")
+    def get_service_text(self):
+        return self.service_text.get("1.0", tk.END).strip()
     
     def log(self, message):
         """Add message to log"""
@@ -489,33 +500,12 @@ class PPTGeneratorGUI:
             )
             return
             
-        if not self.service_file.get():
+        service_text = self.get_service_text()
+        if not service_text:
             messagebox.showerror(
-                "Missing Service File",
-                "Please select your service text file."
+                "Missing Service List",
+                "Please enter the service list in the text box."
             )
-            return
-        
-        # Validate service file exists
-        service_path = self.service_file.get()
-        if not os.path.exists(service_path):
-            # Check if it's a WSL path
-            if service_path.startswith("//wsl$") or "/wsl/" in service_path.lower():
-                messagebox.showerror(
-                    "WSL Path Not Accessible",
-                    f"❌ Cannot access WSL file path:\n\n{service_path}\n\n"
-                    "📋 Solution:\n"
-                    "1. Copy your service file to Windows Desktop\n"
-                    "   (e.g., C:\\Users\\USER\\Desktop\\service.txt)\n"
-                    "2. Click 'Browse' and select it from Desktop\n\n"
-                    "⚠️ WSL paths (//wsl$/...) are not accessible from Windows apps."
-                )
-            else:
-                messagebox.showerror(
-                    "Service File Not Found",
-                    f"The service file no longer exists:\n\n{service_path}\n\n"
-                    "Please select the file again using the 'Browse' button."
-                )
             return
         
         # Run in background thread to prevent UI freezing
@@ -543,21 +533,13 @@ class PPTGeneratorGUI:
                 raise Exception("Generator script not found. Please ensure generate_hcs_ppt.py is in the same folder as this program.")
             
             # Get full paths
-            service_file_path = self.service_file.get()
+            service_text = self.get_service_text()
             
-            # Debug logging - full paths
-            self.log(f"📄 Service file: {service_file_path}")
+            # Debug logging
+            self.log("📄 Service list: (input box)")
             self.log(f"📁 Source folder: {self.source_folder.get()}")
             self.log(f"🌐 Language: {self.language.get()}")
             self.log(f"💾 Output: {output_file}\n")
-            
-            # Validate service file exists and is accessible
-            if not os.path.isfile(service_file_path):
-                raise Exception(
-                    f"Service file not found or not accessible:\n"
-                    f"{service_file_path}\n\n"
-                    f"Please ensure the file exists and you have permission to read it."
-                )
             
             # Create a temporary batch file that includes language directive
             desktop_path = Path.home() / "Desktop"
@@ -578,24 +560,12 @@ class PPTGeneratorGUI:
             self.log(f"📝 Creating temp file: {temp_batch_file}")
             
             try:
-                # Copy original service file content first
-                self.log(f"📖 Reading service file: {service_file_path}")
-                try:
-                    with open(service_file_path, 'r', encoding='utf-8') as orig_f:
-                        service_content = orig_f.read()
-                except (FileNotFoundError, OSError, PermissionError) as e:
-                    raise Exception(
-                        f"Cannot read service file: {service_file_path}\n\n"
-                        f"Error: {str(e)}\n\n"
-                        "If using WSL path (//wsl$/...), please copy the file to Windows Desktop and select it from there."
-                    )
-                
                 # Write to temp file
                 self.log(f"💾 Writing temp file...")
                 with open(temp_batch_file, 'w', encoding='utf-8') as temp_f:
                     # Add language directive
                     temp_f.write(f"# Language: {self.language.get()}\n")
-                    temp_f.write(service_content)
+                    temp_f.write(service_text)
                     
                 self.log(f"✅ Temp file created successfully\n")
                     
@@ -691,7 +661,7 @@ class PPTGeneratorGUI:
 
                 if error_text and "not found" in error_text.lower():
                     error_hints.append("• Some hymn numbers were not found in your PPT files")
-                    error_hints.append("• Check that the hymn numbers in your service file are correct")
+                    error_hints.append("• Check that the hymn numbers in your service list are correct")
                     error_hints.append("• Verify all required PPT files are in the source folder")
                 
                 if error_text and ("permission" in error_text.lower() or "access" in error_text.lower()):
@@ -730,7 +700,7 @@ class PPTGeneratorGUI:
                     "• Hymn numbers not found in PPT files\n"
                     "• OneDrive files not fully downloaded\n"
                     "• Source folder is inaccessible\n"
-                    "• Service file format is incorrect"
+                    "• Service list format is incorrect"
                 )
                 
         except Exception as e:
@@ -754,7 +724,7 @@ class PPTGeneratorGUI:
                 help_text += "• Desktop is writable"
             else:
                 help_text += "• Source folder has PPT files\n"
-                help_text += "• Service file format is correct\n"
+                help_text += "• Service list format is correct\n"
                 help_text += "• OneDrive is properly synced"
             
             messagebox.showerror(
