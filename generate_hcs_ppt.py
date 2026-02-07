@@ -214,21 +214,53 @@ def extract_song_text_from_pdf_by_page(pdf_path, target_hymn_num):
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Language-specific search directories
-MALAYALAM_SEARCH_DIRS = [
-    os.path.join(BASE_DIR, "OneDrive_2026-02-05", "Holy Communion Services - Slides", "Malayalam HCS"),
-]
+# These will be the base directories - the script will search recursively
+def get_search_dirs(language="Malayalam"):
+    """Get search directories based on language and current working directory."""
+    # Use current working directory as base (set by GUI or default to script location)
+    cwd = os.getcwd()
+    
+    # Check if running from a specific year folder (e.g., "2026- Mal")
+    if os.path.isdir(cwd):
+        # Use current directory and search recursively
+        return [cwd]
+    
+    # Default to OneDrive structure search directories
+    base_dirs = [
+        os.path.join(BASE_DIR, "OneDrive_2026-02-05", "Holy Communion Services - Slides"),
+        BASE_DIR,
+    ]
+    
+    # Try to find language-specific folders
+    search_dirs = []
+    for base in base_dirs:
+        if language.lower() == "malayalam":
+            mal_dir = os.path.join(base, "Malayalam HCS")
+            if os.path.isdir(mal_dir):
+                search_dirs.append(mal_dir)
+        elif language.lower() == "english":
+            eng_dir = os.path.join(base, "English HCS")
+            if os.path.isdir(eng_dir):
+                search_dirs.append(eng_dir)
+    
+    # If no language-specific folders found, use base directories
+    if not search_dirs:
+        search_dirs = base_dirs
+    
+    return search_dirs
 
-ENGLISH_SEARCH_DIRS = [
-    os.path.join(BASE_DIR, "OneDrive_2026-02-05", "Holy Communion Services - Slides", "English HCS"),
-]
+
+# Initialize with default Malayalam directories (will be updated when script runs)
+MALAYALAM_SEARCH_DIRS = get_search_dirs("Malayalam")
+ENGLISH_SEARCH_DIRS = get_search_dirs("English")
 
 def find_all_pptx_files(search_dirs, language="Malayalam"):
     """Recursively find all .pptx files in the given directories, filtered by language."""
     # Use language-specific directories
     if language.lower() == "malayalam":
-        dirs_to_search = MALAYALAM_SEARCH_DIRS
+        dirs_to_search = get_search_dirs("Malayalam")
     elif language.lower() == "english":
-        dirs_to_search = ENGLISH_SEARCH_DIRS
+        dirs_to_search = get_search_dirs("English")
     else:
         dirs_to_search = search_dirs
     
@@ -1544,6 +1576,11 @@ def generate_presentation(song_list, output_filename=None, language="Malayalam",
     global USED_SLIDE_RANGES
     USED_SLIDE_RANGES = {}
     
+    # Refresh search directories based on current working directory and language
+    global MALAYALAM_SEARCH_DIRS, ENGLISH_SEARCH_DIRS
+    MALAYALAM_SEARCH_DIRS = get_search_dirs("Malayalam")
+    ENGLISH_SEARCH_DIRS = get_search_dirs("English")
+    
     if output_filename is None:
         today = datetime.now().strftime("%d %b %Y")
         output_filename = f"{today} - Generated HCS.pptx"
@@ -1551,6 +1588,7 @@ def generate_presentation(song_list, output_filename=None, language="Malayalam",
     output_path = os.path.join(BASE_DIR, output_filename)
     
     print(f"  Language: {language}")
+    print(f"  Search directories: {get_search_dirs(language)}")
 
     # Load template and create presentation
     prs = Presentation(TEMPLATE_PPT)

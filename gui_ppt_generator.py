@@ -17,12 +17,13 @@ class PPTGeneratorGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Malayalam Church Songs - PPT Generator")
-        self.root.geometry("700x600")
+        self.root.geometry("800x600")  # Wider to accommodate language selector
         self.root.resizable(False, False)
         
         # Variables
         self.service_file = tk.StringVar()
         self.source_folder = tk.StringVar()
+        self.language = tk.StringVar(value="Malayalam")  # Default to Malayalam
         self.settings_file = Path.home() / ".church_ppt_settings.txt"
         
         # Load saved settings
@@ -66,6 +67,20 @@ class PPTGeneratorGUI:
             font=("Arial", 12, "bold")
         )
         setup_label.grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 10))
+        
+        # Language selection
+        lang_label = tk.Label(main_frame, text="Language:", font=("Arial", 10))
+        lang_label.grid(row=0, column=3, sticky=tk.W, pady=5, padx=(20, 0))
+        
+        lang_combo = ttk.Combobox(
+            main_frame,
+            textvariable=self.language,
+            values=["Malayalam", "English"],
+            state="readonly",
+            width=12
+        )
+        lang_combo.grid(row=0, column=4, pady=5)
+        lang_combo.current(0)
         
         # Option 1: Browse local folder
         source_label = tk.Label(main_frame, text="Option 1 - Local Folder:", font=("Arial", 10))
@@ -111,13 +126,11 @@ class PPTGeneratorGUI:
             font=("Arial", 8),
             fg="#7f8c8d"
         )
-        help_label.grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=(0, 5))
-        
-        help_label.grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=(0, 5))
+        help_label.grid(row=3, column=0, columnspan=5, sticky=tk.W, pady=(0, 5))
         
         # Separator
         separator = ttk.Separator(main_frame, orient=tk.HORIZONTAL)
-        separator.grid(row=4, column=0, columnspan=3, sticky="ew", pady=20)
+        separator.grid(row=4, column=0, columnspan=5, sticky="ew", pady=20)
         
         # Section 2: Generate PPT (Every time)
         generate_label = tk.Label(
@@ -131,8 +144,6 @@ class PPTGeneratorGUI:
         service_label.grid(row=6, column=0, sticky=tk.W, pady=5)
         
         service_entry = tk.Entry(main_frame, textvariable=self.service_file, width=40, state="readonly")
-        service_entry.grid(row=6, column=1, padx=5, pady=5)
-        
         service_entry.grid(row=6, column=1, padx=5, pady=5)
         
         service_btn = tk.Button(
@@ -210,23 +221,102 @@ class PPTGeneratorGUI:
         except:
             pass
             
+    def find_language_folder(self, base_folder):
+        """Intelligently find the correct language-specific PPT folder.
+        
+        Searches for standard structure:
+        - Holy Communion Services - Slides/Malayalam HCS/
+        - Holy Communion Services - Slides/English HCS/
+        
+        Returns the deepest folder containing PPT files.
+        """
+        language = self.language.get()
+        base_path = Path(base_folder)
+        
+        # Check if this is the parent folder with standard structure
+        hcs_folder = base_path / "Holy Communion Services - Slides"
+        if hcs_folder.exists():
+            if language == "Malayalam":
+                lang_folder = hcs_folder / "Malayalam HCS"
+            else:
+                lang_folder = hcs_folder / "English HCS"
+            
+            if lang_folder.exists():
+                # Look for year folders (2024, 2025, 2026, etc.)
+                year_folders = sorted([f for f in lang_folder.iterdir() if f.is_dir()], reverse=True)
+                
+                # Try to find the latest year folder with PPT files
+                for year_folder in year_folders:
+                    ppt_files = list(year_folder.glob("*.ppt*"))
+                    if ppt_files:
+                        self.log(f"📁 Auto-detected: {year_folder.relative_to(base_path)}")
+                        return str(year_folder)
+                
+                # No year folders with PPTs, use the language folder itself
+                ppt_files = list(lang_folder.glob("**/*.ppt*"))  # Recursive search
+                if ppt_files:
+                    self.log(f"📁 Auto-detected: {lang_folder.relative_to(base_path)}")
+                    return str(lang_folder)
+        
+        # Check if user selected the HCS folder directly
+        if base_path.name == "Holy Communion Services - Slides":
+            if language == "Malayalam":
+                lang_folder = base_path / "Malayalam HCS"
+            else:
+                lang_folder = base_path / "English HCS"
+            
+            if lang_folder.exists():
+                # Look for latest year folder
+                year_folders = sorted([f for f in lang_folder.iterdir() if f.is_dir()], reverse=True)
+                for year_folder in year_folders:
+                    ppt_files = list(year_folder.glob("*.ppt*"))
+                    if ppt_files:
+                        return str(year_folder)
+                
+                # Use language folder itself
+                return str(lang_folder)
+        
+        # Check if user selected the language folder directly (Malayalam HCS or English HCS)
+        if "Malayalam HCS" in str(base_path) or "English HCS" in str(base_path):
+            # Look for latest year folder
+            year_folders = sorted([f for f in base_path.iterdir() if f.is_dir()], reverse=True)
+            for year_folder in year_folders:
+                ppt_files = list(year_folder.glob("*.ppt*"))
+                if ppt_files:
+                    return str(year_folder)
+            
+            # Use current folder
+            return str(base_path)
+        
+        # User selected a specific folder - use as-is
+        return base_folder
+    
     def select_source_folder(self):
         """Select folder containing source PPT files"""
         folder = filedialog.askdirectory(
-            title="Select folder with your hymn PPT files",
+            title="Select folder with your hymn PPT files (or parent OneDrive folder)",
             initialdir=str(Path.home())
         )
         if folder:
+            # Try to intelligently find the language-specific folder
+            detected_folder = self.find_language_folder(folder)
+            
             # Validate folder has PPT files
-            ppt_files = list(Path(folder).glob("*.ppt*"))
+            ppt_files = list(Path(detected_folder).glob("*.ppt*"))
+            
+            # Also search recursively if directly in detected folder not found
+            if len(ppt_files) == 0:
+                ppt_files = list(Path(detected_folder).glob("**/*.ppt*"))
             
             if len(ppt_files) == 0:
                 response = messagebox.askyesno(
                     "No PowerPoint Files Found",
-                    f"Warning: No PowerPoint files found in:\n\n{folder}\n\n"
+                    f"Warning: No PowerPoint files found in:\n\n{detected_folder}\n\n"
+                    f"Selected folder: {folder}\n\n"
                     "This folder appears to be empty or doesn't contain .pptx/.ppt files.\n\n"
                     "Common issues:\n"
                     "• Wrong folder selected\n"
+                    f"• No {self.language.get()} PPT files in this location\n"
                     "• OneDrive files are cloud-only (not downloaded)\n"
                     "• Files have different extensions\n\n"
                     "If using OneDrive:\n"
@@ -238,7 +328,7 @@ class PPTGeneratorGUI:
                     return
             else:
                 # Check for potential OneDrive cloud-only files
-                if "onedrive" in folder.lower():
+                if "onedrive" in detected_folder.lower():
                     sample_file = ppt_files[0]
                     file_size = os.path.getsize(sample_file)
                     if file_size < 1000:  # Suspiciously small - might be placeholder
@@ -255,16 +345,24 @@ class PPTGeneratorGUI:
                             "Folder will be saved, but generation may fail until files are downloaded."
                         )
             
-            self.source_folder.set(folder)
+            # Save the detected folder (not the original selection)
+            self.source_folder.set(detected_folder)
             self.save_settings()
-            self.log(f"✅ Source folder set: {folder}")
+            self.log(f"✅ Source folder set: {detected_folder}")
             self.log(f"   Found {len(ppt_files)} PowerPoint files")
             
+            if folder != detected_folder:
+                self.log(f"   (Auto-detected from: {folder})")
+            
             if len(ppt_files) > 0:
+                match_msg = ""
+                if folder != detected_folder:
+                    match_msg = f"\n✨ Smart Detection:\nYou selected: {Path(folder).name}\nFound {self.language.get()} PPTs in: {Path(detected_folder).name}\n"
+                
                 messagebox.showinfo(
                     "Setup Complete",
                     f"Source folder saved!\n\n"
-                    f"Found {len(ppt_files)} PowerPoint files.\n\n"
+                    f"Found {len(ppt_files)} PowerPoint files.{match_msg}\n"
                     "You won't need to select this again.\n\n"
                     "Now you can generate presentations by selecting a service file and clicking Generate."
                 )
@@ -416,17 +514,34 @@ class PPTGeneratorGUI:
             
             self.log(f"📄 Service file: {os.path.basename(self.service_file.get())}")
             self.log(f"📁 Source folder: {self.source_folder.get()}")
+            self.log(f"🌐 Language: {self.language.get()}")
             self.log(f"💾 Output: {output_file}\n")
+            
+            # Create a temporary batch file that includes language directive
+            temp_batch_file = Path.home() / "Desktop" / ".temp_service.txt"
+            with open(temp_batch_file, 'w', encoding='utf-8') as temp_f:
+                # Add language directive
+                temp_f.write(f"# Language: {self.language.get()}\n")
+                # Copy original service file content
+                with open(self.service_file.get(), 'r', encoding='utf-8') as orig_f:
+                    temp_f.write(orig_f.read())
             
             # Run the generator with timeout
             try:
                 result = subprocess.run(
-                    [sys.executable, script_path, "--batch", self.service_file.get(), output_file],
+                    [sys.executable, script_path, "--batch", str(temp_batch_file), output_file],
                     capture_output=True,
                     text=True,
                     cwd=self.source_folder.get(),  # Run from source folder to find PPTs
                     timeout=300  # 5 minute timeout
                 )
+            finally:
+                # Clean up temporary file
+                try:
+                    if temp_batch_file.exists():
+                        temp_batch_file.unlink()
+                except:
+                    pass
             except subprocess.TimeoutExpired:
                 self.log("\n" + "="*70)
                 self.log("⏱️ TIMEOUT ERROR")
