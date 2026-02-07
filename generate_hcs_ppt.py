@@ -70,6 +70,25 @@ SEARCH_DIRS = [
     BASE_DIR,
 ]
 
+def find_template_ppt(language="Malayalam"):
+    """Find the template PPT in the selected source folder or fallback paths."""
+    template_name = "4 Jan 2026.pptx"
+    search_roots = [os.getcwd(), BASE_DIR]
+
+    # Prefer the current working directory (set by the GUI to the source folder)
+    for root in search_roots:
+        if not root or not os.path.isdir(root):
+            continue
+        for dirpath, _, filenames in os.walk(root):
+            if template_name in filenames:
+                return os.path.join(dirpath, template_name)
+
+    # Final fallback to the static path if it exists
+    if os.path.exists(TEMPLATE_PPT):
+        return TEMPLATE_PPT
+
+    return None
+
 # ─── Font / layout settings (from template analysis) ─────────────────────────
 TITLE_FONT = "Gabriola"
 TITLE_SIZE = Pt(60)
@@ -1591,7 +1610,15 @@ def generate_presentation(song_list, output_filename=None, language="Malayalam",
     print(f"  Search directories: {get_search_dirs(language)}")
 
     # Load template and create presentation
-    prs = Presentation(TEMPLATE_PPT)
+    template_path = find_template_ppt(language)
+    if not template_path:
+        raise FileNotFoundError(
+            "Template PPT not found.\n\n"
+            "Please ensure the source folder contains '4 Jan 2026.pptx' under the Malayalam HCS folder."
+        )
+
+    print(f"  Template: {template_path}")
+    prs = Presentation(template_path)
 
     # Remove all existing slides
     while len(prs.slides) > 0:
