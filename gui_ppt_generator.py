@@ -26,6 +26,10 @@ class PPTGeneratorGUI:
         self.language = tk.StringVar(value="Malayalam")  # Default to Malayalam
         self.ppt_count = tk.StringVar(value="No folder selected")
         self.settings_file = Path.home() / ".church_ppt_settings.txt"
+        self._is_loading = True  # Flag to track initial load
+        
+        # Add trace to auto-update PPT count when folder path changes
+        self.source_folder.trace_add('write', lambda *args: self.update_ppt_count())
         
         # Load saved settings
         self.load_settings()
@@ -33,6 +37,9 @@ class PPTGeneratorGUI:
         # Create UI
         self.create_ui()
         
+        # Mark loading complete
+        self._is_loading = False
+    
     def create_ui(self):
         # Header
         header_frame = tk.Frame(self.root, bg="#2c3e50", height=80)
@@ -87,7 +94,7 @@ class PPTGeneratorGUI:
         source_label = tk.Label(main_frame, text="Option 1 - Local Folder:", font=("Arial", 10))
         source_label.grid(row=1, column=0, sticky=tk.W, pady=5)
         
-        source_entry = tk.Entry(main_frame, textvariable=self.source_folder, width=40, state="readonly")
+        source_entry = tk.Entry(main_frame, textvariable=self.source_folder, width=40)
         source_entry.grid(row=1, column=1, padx=5, pady=5)
         
         source_btn = tk.Button(
@@ -221,14 +228,7 @@ class PPTGeneratorGUI:
                     saved_folder = f.read().strip()
                     if os.path.isdir(saved_folder):
                         self.source_folder.set(saved_folder)
-                        self.log("✅ Loaded saved source folder: " + saved_folder)
-                        
-                        # Count PPT files
-                        ppt_files = list(Path(saved_folder).glob("**/*.ppt*"))
-                        if len(ppt_files) > 0:
-                            self.ppt_count.set(f"✓ Found {len(ppt_files)} PPT files (all subfolders)")
-                        else:
-                            self.ppt_count.set("⚠ No PPT files found")
+                        # PPT count will be updated automatically by trace callback
             except:
                 pass
                 
@@ -239,6 +239,37 @@ class PPTGeneratorGUI:
                 f.write(self.source_folder.get())
         except:
             pass
+    
+    def update_ppt_count(self):
+        """Check the current source folder path and update PPT count display"""
+        folder_path = self.source_folder.get().strip()
+        
+        if not folder_path:
+            self.ppt_count.set("No folder selected")
+            return
+        
+        if not os.path.isdir(folder_path):
+            self.ppt_count.set("✗ Invalid folder path")
+            return
+        
+        # Try to intelligently find the language-specific folder
+        detected_folder = self.find_language_folder(folder_path)
+        
+        # Count PPT files recursively
+        try:
+            ppt_files = list(Path(detected_folder).glob("**/*.ppt*"))
+            
+            if len(ppt_files) > 0:
+                self.ppt_count.set(f"✓ Found {len(ppt_files)} PPT files (all subfolders)")
+                # Log only on initial load
+                if self._is_loading and hasattr(self, 'log_text'):
+                    self.log(f"✅ Loaded saved source folder: {detected_folder}")
+                    if folder_path != detected_folder:
+                        self.log(f"   (Auto-detected from: {folder_path})")
+            else:
+                self.ppt_count.set("⚠ No PPT files found")
+        except Exception as e:
+            self.ppt_count.set("✗ Error scanning folder")
             
     def find_language_folder(self, base_folder):
         """Intelligently find the correct language-specific PPT folder.
@@ -347,21 +378,14 @@ class PPTGeneratorGUI:
                         )
             
             # Save the detected folder (not the original selection)
+            # Setting source_folder will trigger auto-update of PPT count via trace callback
             self.source_folder.set(detected_folder)
             self.save_settings()
-            self.log(f"✅ Source folder set: {detected_folder}")
-            self.log(f"   Found {len(ppt_files)} PowerPoint files (searching all subfolders)")
             
+            # Log additional info
             if folder != detected_folder:
-                self.log(f"   (Auto-detected from: {folder})")
-            self.log(f"   Will search all year folders (2024, 2025, 2026, etc.)")
+                self.log(f"   Will search all year folders (2024, 2025, 2026, etc.)")
             self.log("")
-            
-            # Update PPT count display
-            if len(ppt_files) > 0:
-                self.ppt_count.set(f"✓ Found {len(ppt_files)} PPT files (all subfolders)")
-            else:
-                self.ppt_count.set("⚠ No PPT files found")
     
     def sync_from_onedrive(self):
         """Download files from OneDrive link"""
