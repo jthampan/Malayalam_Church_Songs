@@ -5,6 +5,7 @@ import PyInstaller.__main__
 import os
 import sys
 import shutil
+import subprocess
 from pathlib import Path
 
 # Ensure we're in the correct directory
@@ -32,6 +33,17 @@ if os.path.exists('build'):
 if os.path.exists('dist'):
     print("🧹 Cleaning previous dist directory...")
     shutil.rmtree('dist')
+
+# Ensure the old exe is not running (prevents WinError 5)
+try:
+    subprocess.run(
+        ["taskkill", "/F", "/IM", "Church_Songs_Generator.exe"],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+except Exception:
+    pass
 
 print("🔨 Building Windows Executable...")
 print("="*60)
