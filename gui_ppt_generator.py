@@ -492,6 +492,16 @@ class PPTGeneratorGUI:
             # Prepare output filename
             date_str = datetime.now().strftime("%d_%b_%Y")
             output_file = str(Path.home() / "Desktop" / f"HCS_Malayalam_{date_str}.pptx")
+            if os.path.exists(output_file):
+                try:
+                    os.remove(output_file)
+                    self.log(f"🧹 Removed existing output: {output_file}")
+                except Exception as e:
+                    raise Exception(
+                        f"Cannot remove existing output file:\n{output_file}\n\n"
+                        f"Error: {str(e)}\n\n"
+                        "Please close the PPT if it is open and try again."
+                    )
             
             # Find generate_hcs_ppt.py
             script_path = self._find_generator_script()
