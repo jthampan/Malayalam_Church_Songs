@@ -67,10 +67,11 @@ class PPTGeneratorGUI:
         )
         setup_label.grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 10))
         
-        source_label = tk.Label(main_frame, text="Source PPT Folder:", font=("Arial", 10))
+        # Option 1: Browse local folder
+        source_label = tk.Label(main_frame, text="Option 1 - Local Folder:", font=("Arial", 10))
         source_label.grid(row=1, column=0, sticky=tk.W, pady=5)
         
-        source_entry = tk.Entry(main_frame, textvariable=self.source_folder, width=50, state="readonly")
+        source_entry = tk.Entry(main_frame, textvariable=self.source_folder, width=40, state="readonly")
         source_entry.grid(row=1, column=1, padx=5, pady=5)
         
         source_btn = tk.Button(
@@ -84,9 +85,39 @@ class PPTGeneratorGUI:
         )
         source_btn.grid(row=1, column=2, pady=5)
         
+        # Option 2: OneDrive link
+        onedrive_label = tk.Label(main_frame, text="Option 2 - OneDrive Link:", font=("Arial", 10))
+        onedrive_label.grid(row=2, column=0, sticky=tk.W, pady=5)
+        
+        self.onedrive_link = tk.StringVar()
+        onedrive_entry = tk.Entry(main_frame, textvariable=self.onedrive_link, width=40)
+        onedrive_entry.grid(row=2, column=1, padx=5, pady=5)
+        
+        onedrive_btn = tk.Button(
+            main_frame,
+            text="Help / Open Link",
+            command=self.sync_from_onedrive,
+            bg="#9b59b6",
+            fg="white",
+            font=("Arial", 9, "bold"),
+            padx=10
+        )
+        onedrive_btn.grid(row=2, column=2, pady=5)
+        
+        # Help text
+        help_label = tk.Label(
+            main_frame,
+            text="💡 Best: Use OneDrive Desktop sync, then browse to C:\\Users\\...\\OneDrive\\... folder",
+            font=("Arial", 8),
+            fg="#7f8c8d"
+        )
+        help_label.grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=(0, 5))
+        
+        help_label.grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=(0, 5))
+        
         # Separator
         separator = ttk.Separator(main_frame, orient=tk.HORIZONTAL)
-        separator.grid(row=2, column=0, columnspan=3, sticky="ew", pady=20)
+        separator.grid(row=4, column=0, columnspan=3, sticky="ew", pady=20)
         
         # Section 2: Generate PPT (Every time)
         generate_label = tk.Label(
@@ -94,13 +125,15 @@ class PPTGeneratorGUI:
             text="🎉 Generate PowerPoint (Every Time)",
             font=("Arial", 12, "bold")
         )
-        generate_label.grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=(0, 10))
+        generate_label.grid(row=5, column=0, columnspan=3, sticky=tk.W, pady=(0, 10))
         
         service_label = tk.Label(main_frame, text="Service File:", font=("Arial", 10))
-        service_label.grid(row=4, column=0, sticky=tk.W, pady=5)
+        service_label.grid(row=6, column=0, sticky=tk.W, pady=5)
         
-        service_entry = tk.Entry(main_frame, textvariable=self.service_file, width=50, state="readonly")
-        service_entry.grid(row=4, column=1, padx=5, pady=5)
+        service_entry = tk.Entry(main_frame, textvariable=self.service_file, width=40, state="readonly")
+        service_entry.grid(row=6, column=1, padx=5, pady=5)
+        
+        service_entry.grid(row=6, column=1, padx=5, pady=5)
         
         service_btn = tk.Button(
             main_frame,
@@ -111,7 +144,7 @@ class PPTGeneratorGUI:
             font=("Arial", 9, "bold"),
             padx=10
         )
-        service_btn.grid(row=4, column=2, pady=5)
+        service_btn.grid(row=6, column=2, pady=5)
         
         # Generate button (big and prominent)
         self.generate_btn = tk.Button(
@@ -124,15 +157,15 @@ class PPTGeneratorGUI:
             height=2,
             cursor="hand2"
         )
-        self.generate_btn.grid(row=5, column=0, columnspan=3, pady=20, sticky="ew")
+        self.generate_btn.grid(row=7, column=0, columnspan=3, pady=20, sticky="ew")
         
         # Progress bar
         self.progress = ttk.Progressbar(main_frame, mode='indeterminate')
-        self.progress.grid(row=6, column=0, columnspan=3, sticky="ew", pady=5)
+        self.progress.grid(row=8, column=0, columnspan=3, sticky="ew", pady=5)
         
         # Output log
         log_label = tk.Label(main_frame, text="Output:", font=("Arial", 10, "bold"))
-        log_label.grid(row=7, column=0, columnspan=3, sticky=tk.W, pady=(10, 5))
+        log_label.grid(row=9, column=0, columnspan=3, sticky=tk.W, pady=(10, 5))
         
         self.log_text = scrolledtext.ScrolledText(
             main_frame,
@@ -141,7 +174,7 @@ class PPTGeneratorGUI:
             state="disabled",
             font=("Consolas", 9)
         )
-        self.log_text.grid(row=8, column=0, columnspan=3, pady=5)
+        self.log_text.grid(row=10, column=0, columnspan=3, pady=5)
         
         # Footer with help
         footer_frame = tk.Frame(self.root, bg="#ecf0f1", height=40)
@@ -192,6 +225,52 @@ class PPTGeneratorGUI:
                 "Source folder saved! You won't need to select this again.\n\n"
                 "Now you can generate presentations by selecting a service file and clicking Generate."
             )
+    
+    def sync_from_onedrive(self):
+        """Download files from OneDrive link"""
+        onedrive_link = self.onedrive_link.get().strip()
+        
+        if not onedrive_link:
+            # Show help dialog even without link
+            messagebox.showinfo(
+                "OneDrive Setup Help",
+                "🌐 How to Use OneDrive Files:\n\n"
+                "METHOD 1 (Recommended):\n"
+                "• Make sure OneDrive Desktop is installed\n"
+                "• Sign in and sync your files\n"
+                "• Use 'Browse' → Select OneDrive folder\n"
+                "• Files stay updated automatically!\n\n"
+                "METHOD 2:\n"
+                "• Paste your OneDrive link above\n"
+                "• Click this button to open in browser\n"
+                "• Download files manually\n"
+                "• Use 'Browse' → Select downloaded folder\n\n"
+                "See ONEDRIVE_SETUP_GUIDE.md for detailed instructions."
+            )
+            return
+        
+        # If link is provided, offer to open it
+        response = messagebox.askyesno(
+            "Open OneDrive Link",
+            "📎 OneDrive Link Detected!\n\n"
+            f"{onedrive_link}\n\n"
+            "I'll open this link in your browser.\n\n"
+            "Then:\n"
+            "1. Select all files\n"
+            "2. Click 'Download'\n"
+            "3. Extract the downloaded ZIP\n"
+            "4. Use 'Browse' button to select that folder\n\n"
+            "💡 TIP: Use OneDrive Desktop sync instead for automatic updates!\n\n"
+            "Open link in browser now?"
+        )
+        
+        if response:
+            import webbrowser
+            webbrowser.open(onedrive_link)
+            self.log("🌐 Opened OneDrive link in browser")
+            self.log("📥 Download files, then use 'Browse' button to select folder")
+            self.log("")
+            self.log("💡 For automatic sync, use OneDrive Desktop (see help)")
     
     def select_service_file(self):
         """Select service text file"""
