@@ -17,7 +17,7 @@ class PPTGeneratorGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Malayalam Church Songs - PPT Generator")
-        self.root.geometry("800x600")  # Wider to accommodate language selector
+        self.root.geometry("900x600")  # Wide enough for long paths
         self.root.resizable(False, False)
         
         # Variables
@@ -181,12 +181,12 @@ class PPTGeneratorGUI:
         self.log_text = scrolledtext.ScrolledText(
             main_frame,
             height=12,
-            width=90,
+            width=105,
             state="disabled",
-            wrap=tk.WORD,
-            font=("Consolas", 9)
+            wrap=tk.CHAR,
+            font=("Consolas", 8)
         )
-        self.log_text.grid(row=10, column=0, columnspan=5, pady=5)
+        self.log_text.grid(row=10, column=0, columnspan=5, pady=5, sticky="ew")
         
         # Footer with help
         footer_frame = tk.Frame(self.root, bg="#ecf0f1", height=40)
