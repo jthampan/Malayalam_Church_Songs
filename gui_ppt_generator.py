@@ -229,7 +229,7 @@ class PPTGeneratorGUI:
         - Holy Communion Services - Slides/Malayalam HCS/
         - Holy Communion Services - Slides/English HCS/
         
-        Returns the deepest folder containing PPT files.
+        Returns the language root folder to search ALL year subfolders recursively.
         """
         language = self.language.get()
         base_path = Path(base_folder)
@@ -243,20 +243,11 @@ class PPTGeneratorGUI:
                 lang_folder = hcs_folder / "English HCS"
             
             if lang_folder.exists():
-                # Look for year folders (2024, 2025, 2026, etc.)
-                year_folders = sorted([f for f in lang_folder.iterdir() if f.is_dir()], reverse=True)
-                
-                # Try to find the latest year folder with PPT files
-                for year_folder in year_folders:
-                    ppt_files = list(year_folder.glob("*.ppt*"))
-                    if ppt_files:
-                        self.log(f"📁 Auto-detected: {year_folder.relative_to(base_path)}")
-                        return str(year_folder)
-                
-                # No year folders with PPTs, use the language folder itself
+                # Return the language folder root to search ALL year folders
                 ppt_files = list(lang_folder.glob("**/*.ppt*"))  # Recursive search
                 if ppt_files:
                     self.log(f"📁 Auto-detected: {lang_folder.relative_to(base_path)}")
+                    self.log(f"   Will search all year folders (2024, 2025, 2026, etc.)")
                     return str(lang_folder)
         
         # Check if user selected the HCS folder directly
@@ -267,26 +258,14 @@ class PPTGeneratorGUI:
                 lang_folder = base_path / "English HCS"
             
             if lang_folder.exists():
-                # Look for latest year folder
-                year_folders = sorted([f for f in lang_folder.iterdir() if f.is_dir()], reverse=True)
-                for year_folder in year_folders:
-                    ppt_files = list(year_folder.glob("*.ppt*"))
-                    if ppt_files:
-                        return str(year_folder)
-                
-                # Use language folder itself
-                return str(lang_folder)
+                ppt_files = list(lang_folder.glob("**/*.ppt*"))
+                if ppt_files:
+                    self.log(f"📁 Will search all subfolders in: {lang_folder.name}")
+                    return str(lang_folder)
         
         # Check if user selected the language folder directly (Malayalam HCS or English HCS)
         if "Malayalam HCS" in str(base_path) or "English HCS" in str(base_path):
-            # Look for latest year folder
-            year_folders = sorted([f for f in base_path.iterdir() if f.is_dir()], reverse=True)
-            for year_folder in year_folders:
-                ppt_files = list(year_folder.glob("*.ppt*"))
-                if ppt_files:
-                    return str(year_folder)
-            
-            # Use current folder
+            # Return this folder - will search all year subfolders
             return str(base_path)
         
         # User selected a specific folder - use as-is
@@ -350,7 +329,7 @@ class PPTGeneratorGUI:
             self.source_folder.set(detected_folder)
             self.save_settings()
             self.log(f"✅ Source folder set: {detected_folder}")
-            self.log(f"   Found {len(ppt_files)} PowerPoint files")
+            self.log(f"   Found {len(ppt_files)} PowerPoint files (searching all subfolders)")
             
             if folder != detected_folder:
                 self.log(f"   (Auto-detected from: {folder})")
@@ -358,12 +337,12 @@ class PPTGeneratorGUI:
             if len(ppt_files) > 0:
                 match_msg = ""
                 if folder != detected_folder:
-                    match_msg = f"\n✨ Smart Detection:\nYou selected: {Path(folder).name}\nFound {self.language.get()} PPTs in: {Path(detected_folder).name}\n"
+                    match_msg = f"\n✨ Smart Detection:\nYou selected: {Path(folder).name}\nUsing {self.language.get()} folder: {Path(detected_folder).name}\nSearching all year subfolders (2024, 2025, 2026, etc.)\n"
                 
                 messagebox.showinfo(
                     "Setup Complete",
                     f"Source folder saved!\n\n"
-                    f"Found {len(ppt_files)} PowerPoint files.{match_msg}\n"
+                    f"Found {len(ppt_files)} PowerPoint files across all subfolders.{match_msg}\n"
                     "You won't need to select this again.\n\n"
                     "Now you can generate presentations by selecting a service file and clicking Generate."
                 )
@@ -459,7 +438,7 @@ class PPTGeneratorGUI:
             return
         
         # Validate source folder has PPT files
-        ppt_files = list(Path(self.source_folder.get()).glob("*.ppt*"))
+        ppt_files = list(Path(self.source_folder.get()).glob("**/*.ppt*"))  # Recursive search
         if len(ppt_files) == 0:
             messagebox.showerror(
                 "No PowerPoint Files Found",
