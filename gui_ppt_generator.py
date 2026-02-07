@@ -32,6 +32,7 @@ class PPTGeneratorGUI:
         self.default_service_text = (
             "# Format: hymn_num|label|title_hint\n"
             "# Example:\n"
+            "# Date: 8 Feb 2026\n"
             "91|Opening|\n"
             "110|ThanksGiving|\n"
             "420|Offertory|\n"
