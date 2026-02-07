@@ -138,7 +138,7 @@ class PPTGeneratorGUI:
             text="🎉 Generate PowerPoint (Every Time)",
             font=("Arial", 12, "bold")
         )
-        generate_label.grid(row=5, column=0, columnspan=3, sticky=tk.W, pady=(0, 10))
+        generate_label.grid(row=5, column=0, columnspan=5, sticky=tk.W, pady=(0, 10))
         
         service_label = tk.Label(main_frame, text="Service File:", font=("Arial", 10))
         service_label.grid(row=6, column=0, sticky=tk.W, pady=5)
@@ -168,24 +168,25 @@ class PPTGeneratorGUI:
             height=2,
             cursor="hand2"
         )
-        self.generate_btn.grid(row=7, column=0, columnspan=3, pady=20, sticky="ew")
+        self.generate_btn.grid(row=7, column=0, columnspan=5, pady=20, sticky="ew")
         
         # Progress bar
         self.progress = ttk.Progressbar(main_frame, mode='indeterminate')
-        self.progress.grid(row=8, column=0, columnspan=3, sticky="ew", pady=5)
+        self.progress.grid(row=8, column=0, columnspan=5, sticky="ew", pady=5)
         
         # Output log
         log_label = tk.Label(main_frame, text="Output:", font=("Arial", 10, "bold"))
-        log_label.grid(row=9, column=0, columnspan=3, sticky=tk.W, pady=(10, 5))
+        log_label.grid(row=9, column=0, columnspan=5, sticky=tk.W, pady=(10, 5))
         
         self.log_text = scrolledtext.ScrolledText(
             main_frame,
             height=12,
-            width=70,
+            width=90,
             state="disabled",
+            wrap=tk.WORD,
             font=("Consolas", 9)
         )
-        self.log_text.grid(row=10, column=0, columnspan=3, pady=5)
+        self.log_text.grid(row=10, column=0, columnspan=5, pady=5)
         
         # Footer with help
         footer_frame = tk.Frame(self.root, bg="#ecf0f1", height=40)
