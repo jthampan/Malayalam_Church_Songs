@@ -207,6 +207,7 @@ class PPTGeneratorGUI:
                     if saved_text:
                         self.service_text.delete("1.0", tk.END)
                         self.service_text.insert("1.0", saved_text)
+                        self._ensure_date_line()
                         self.service_text.edit_modified(False)
                     if saved_language in ("Malayalam", "English"):
                         self.language.set(saved_language)
@@ -239,6 +240,18 @@ class PPTGeneratorGUI:
             if parent.name == "Holy Communion Services - Slides":
                 return str(parent)
         return folder_path
+
+    def _ensure_date_line(self):
+        date_pattern = re.compile(r"^#?\s*Date\s*:\s*.+$", re.IGNORECASE)
+        current_text = self.service_text.get("1.0", tk.END).strip()
+        for line in current_text.splitlines():
+            if date_pattern.match(line.strip()):
+                return
+        today_text = datetime.now().strftime("Date: %d %b %Y")
+        if current_text:
+            self.service_text.insert("1.0", today_text + "\n")
+        else:
+            self.service_text.insert("1.0", today_text + "\n" + self.default_service_text)
 
     def _on_service_text_change(self, event=None):
         if self._is_loading:
