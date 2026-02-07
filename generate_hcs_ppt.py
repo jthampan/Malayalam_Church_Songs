@@ -772,11 +772,9 @@ def clone_slides_from_source(source_pptx_path, slide_indices, target_prs,
     # Check if QR code file exists
     qr_code_path = None
     if is_offertory:
-        for ext in ['png', 'jpg', 'jpeg']:
-            potential_path = resolve_image_path(f"qr_code.{ext}")
-            if os.path.exists(potential_path):
-                qr_code_path = potential_path
-                break
+        potential_path = resolve_image_path("qr_code.png")
+        if os.path.exists(potential_path):
+            qr_code_path = potential_path
 
     for idx in slide_indices:
         if idx >= len(source_slides):
