@@ -435,12 +435,30 @@ class PPTGeneratorGUI:
     
     def select_service_file(self):
         """Select service text file"""
+        # Try to use Desktop first (more likely to be Windows path)
+        initial_dir = str(Path.home() / "Desktop")
+        if not os.path.isdir(initial_dir):
+            initial_dir = str(Path.home() / "Documents")
+        
         file = filedialog.askopenfilename(
-            title="Select your service file",
+            title="Select your service file (use Windows path, not WSL)",
             filetypes=[("Text files", "*.txt"), ("All files", "*.*")],
-            initialdir=str(Path.home() / "Documents")
+            initialdir=initial_dir
         )
         if file:
+            # Check for WSL path
+            if file.startswith("//wsl$") or "/wsl/" in file.lower():
+                messagebox.showwarning(
+                    "WSL Path Detected",
+                    f"⚠️ Warning: WSL file path detected!\n\n"
+                    f"Path: {file}\n\n"
+                    "This may cause errors during generation.\n\n"
+                    "📌 Recommended Solution:\n"
+                    "1. Copy your service file to Windows Desktop\n"
+                    "2. Browse and select it from Desktop\n\n"
+                    "Or use a path like: C:\\Users\\...\\file.txt"
+                )
+            
             self.service_file.set(file)
             self.log(f"✅ Service file selected: {os.path.basename(file)}")
     
@@ -500,12 +518,25 @@ class PPTGeneratorGUI:
             return
         
         # Validate service file exists
-        if not os.path.exists(self.service_file.get()):
-            messagebox.showerror(
-                "Service File Not Found",
-                f"The service file no longer exists:\n\n{self.service_file.get()}\n\n"
-                "Please select the file again using the 'Browse' button."
-            )
+        service_path = self.service_file.get()
+        if not os.path.exists(service_path):
+            # Check if it's a WSL path
+            if service_path.startswith("//wsl$") or "/wsl/" in service_path.lower():
+                messagebox.showerror(
+                    "WSL Path Not Accessible",
+                    f"❌ Cannot access WSL file path:\n\n{service_path}\n\n"
+                    "📋 Solution:\n"
+                    "1. Copy your service file to Windows Desktop\n"
+                    "   (e.g., C:\\Users\\USER\\Desktop\\service.txt)\n"
+                    "2. Click 'Browse' and select it from Desktop\n\n"
+                    "⚠️ WSL paths (//wsl$/...) are not accessible from Windows apps."
+                )
+            else:
+                messagebox.showerror(
+                    "Service File Not Found",
+                    f"The service file no longer exists:\n\n{service_path}\n\n"
+                    "Please select the file again using the 'Browse' button."
+                )
             return
         
         # Run in background thread to prevent UI freezing
@@ -539,12 +570,30 @@ class PPTGeneratorGUI:
             
             # Create a temporary batch file that includes language directive
             temp_batch_file = Path.home() / "Desktop" / ".temp_service.txt"
-            with open(temp_batch_file, 'w', encoding='utf-8') as temp_f:
-                # Add language directive
-                temp_f.write(f"# Language: {self.language.get()}\n")
-                # Copy original service file content
-                with open(self.service_file.get(), 'r', encoding='utf-8') as orig_f:
-                    temp_f.write(orig_f.read())
+            
+            try:
+                with open(temp_batch_file, 'w', encoding='utf-8') as temp_f:
+                    # Add language directive
+                    temp_f.write(f"# Language: {self.language.get()}\n")
+                    
+                    # Copy original service file content
+                    try:
+                        with open(self.service_file.get(), 'r', encoding='utf-8') as orig_f:
+                            temp_f.write(orig_f.read())
+                    except (FileNotFoundError, OSError, PermissionError) as e:
+                        raise Exception(
+                            f"Cannot read service file: {self.service_file.get()}\n\n"
+                            f"Error: {str(e)}\n\n"
+                            "If using WSL path (//wsl$/...), please copy the file to Windows Desktop and select it from there."
+                        )
+            except Exception as e:
+                # Clean up temp file if it was created
+                try:
+                    if temp_batch_file.exists():
+                        temp_batch_file.unlink()
+                except:
+                    pass
+                raise e
             
             # Run the generator with timeout
             try:
