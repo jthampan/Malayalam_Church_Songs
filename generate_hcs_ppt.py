@@ -238,34 +238,30 @@ def get_search_dirs(language="Malayalam"):
     """Get search directories based on language and current working directory."""
     # Use current working directory as base (set by GUI or default to script location)
     cwd = os.getcwd()
-    
-    # Check if running from a specific year folder (e.g., "2026- Mal")
-    if os.path.isdir(cwd):
-        # Use current directory and search recursively
+
+    lang_folder = "Malayalam HCS" if language.lower() == "malayalam" else "English HCS"
+
+    # If cwd already points to the language folder, use it directly
+    if os.path.isdir(cwd) and os.path.basename(cwd).lower() == lang_folder.lower():
         return [cwd]
-    
-    # Default to OneDrive structure search directories
-    base_dirs = [
-        os.path.join(BASE_DIR, "OneDrive_2026-02-05", "Holy Communion Services - Slides"),
-        BASE_DIR,
-    ]
-    
-    # Try to find language-specific folders
+
+    # Search for language folders under likely roots
+    search_roots = [cwd, BASE_DIR]
     search_dirs = []
-    for base in base_dirs:
-        if language.lower() == "malayalam":
-            mal_dir = os.path.join(base, "Malayalam HCS")
-            if os.path.isdir(mal_dir):
-                search_dirs.append(mal_dir)
-        elif language.lower() == "english":
-            eng_dir = os.path.join(base, "English HCS")
-            if os.path.isdir(eng_dir):
-                search_dirs.append(eng_dir)
-    
-    # If no language-specific folders found, use base directories
+    for root in search_roots:
+        if not root or not os.path.isdir(root):
+            continue
+        for dirpath, dirnames, _ in os.walk(root):
+            for d in dirnames:
+                if d.lower() == lang_folder.lower():
+                    search_dirs.append(os.path.join(dirpath, d))
+            if search_dirs:
+                break
+
+    # Fallback to roots if language folder not found
     if not search_dirs:
-        search_dirs = base_dirs
-    
+        search_dirs = [r for r in search_roots if r and os.path.isdir(r)]
+
     return search_dirs
 
 
