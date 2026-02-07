@@ -6,10 +6,11 @@ Simple Windows application
 
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, ttk
-import subprocess
 import sys
 import os
 from pathlib import Path
+from contextlib import redirect_stdout, redirect_stderr
+from io import StringIO
 from datetime import datetime
 import threading
 
@@ -42,27 +43,37 @@ class PPTGeneratorGUI:
     
     def create_ui(self):
         # Header
-        header_frame = tk.Frame(self.root, bg="#2c3e50", height=80)
-        header_frame.pack(fill=tk.X)
-        header_frame.pack_propagate(False)
-        
-        title = tk.Label(
-            header_frame,
-            text="🎵 Malayalam Church Songs",
-            font=("Arial", 18, "bold"),
-            bg="#2c3e50",
-            fg="white"
-        )
-        title.pack(pady=10)
-        
-        subtitle = tk.Label(
-            header_frame,
-            text="PowerPoint Generator for Holy Communion Services",
-            font=("Arial", 10),
-            bg="#2c3e50",
-            fg="#ecf0f1"
-        )
-        subtitle.pack()
+            # Run the generator in-process to avoid relaunching the GUI exe
+            original_argv = sys.argv[:]
+            original_cwd = os.getcwd()
+            stdout_buf = StringIO()
+            stderr_buf = StringIO()
+
+            try:
+                try:
+                    import generate_hcs_ppt
+                except Exception as e:
+                    raise Exception(
+                        "Cannot load generate_hcs_ppt.py. Please ensure it is packaged with the app.\n\n"
+                        f"Error: {str(e)}"
+                    )
+
+                sys.argv = [script_path, "--batch", str(temp_batch_file), output_file]
+                os.chdir(self.source_folder.get())
+
+                with redirect_stdout(stdout_buf), redirect_stderr(stderr_buf):
+                    generate_hcs_ppt.main()
+            finally:
+                sys.argv = original_argv
+                os.chdir(original_cwd)
+
+            generator_stdout = stdout_buf.getvalue().strip()
+            generator_stderr = stderr_buf.getvalue().strip()
+
+            if generator_stdout:
+                self.log(generator_stdout)
+            if generator_stderr:
+                self.log("\n⚠ Generator warnings:\n" + generator_stderr)
         
         # Main content
         main_frame = tk.Frame(self.root, padx=20, pady=20)
@@ -630,37 +641,39 @@ class PPTGeneratorGUI:
                     pass
                 raise e
             
-            # Run the generator with timeout
+            # Run the generator in-process to avoid relaunching the GUI exe
+            generator_stdout = ""
+            generator_stderr = ""
+            generator_error = None
+
             try:
-                result = subprocess.run(
-                    [sys.executable, script_path, "--batch", str(temp_batch_file), output_file],
-                    capture_output=True,
-                    text=True,
-                    cwd=self.source_folder.get(),  # Run from source folder to find PPTs
-                    timeout=300  # 5 minute timeout
-                )
-            except subprocess.TimeoutExpired:
-                self.log("\n" + "="*70)
-                self.log("⏱️ TIMEOUT ERROR")
-                self.log("="*70)
-                self.log("\nGeneration took too long (>5 minutes).")
-                self.log("\nPossible causes:")
-                self.log("  • Very large PPT files")
-                self.log("  • Network drive is slow")
-                self.log("  • OneDrive is not fully synced")
-                self.log("\nPlease check:")
-                self.log("  1. OneDrive files are fully downloaded")
-                self.log("  2. Source folder is on local drive (not network)")
-                self.log("  3. PowerPoint files are not corrupted")
-                
-                # Clean up temporary file
                 try:
-                    if temp_batch_file.exists():
-                        temp_batch_file.unlink()
-                except:
-                    pass
-                
-                raise Exception("Generation timed out after 5 minutes")
+                    import generate_hcs_ppt
+                except Exception as e:
+                    raise Exception(
+                        "Cannot load generate_hcs_ppt.py. Please ensure it is packaged with the app.\n\n"
+                        f"Error: {str(e)}"
+                    )
+
+                original_argv = sys.argv[:]
+                original_cwd = os.getcwd()
+                stdout_buf = StringIO()
+                stderr_buf = StringIO()
+
+                try:
+                    sys.argv = [script_path, "--batch", str(temp_batch_file), output_file]
+                    os.chdir(self.source_folder.get())
+
+                    with redirect_stdout(stdout_buf), redirect_stderr(stderr_buf):
+                        generate_hcs_ppt.main()
+                finally:
+                    sys.argv = original_argv
+                    os.chdir(original_cwd)
+
+                generator_stdout = stdout_buf.getvalue().strip()
+                generator_stderr = stderr_buf.getvalue().strip()
+            except Exception as e:
+                generator_error = str(e)
             finally:
                 # Clean up temporary file
                 try:
@@ -668,17 +681,19 @@ class PPTGeneratorGUI:
                         temp_batch_file.unlink()
                 except:
                     pass
-            
+
             # Show output
-            if result.stdout:
-                self.log(result.stdout)
-            
-            if result.stderr:
+            if generator_stdout:
+                self.log(generator_stdout)
+            if generator_stderr:
                 self.log("\n⚠️ Warnings:")
-                self.log(result.stderr)
-            
+                self.log(generator_stderr)
+            if generator_error:
+                self.log("\n❌ ERROR:")
+                self.log(generator_error)
+
             # Check success
-            if result.returncode == 0 and os.path.exists(output_file):
+            if os.path.exists(output_file):
                 file_size = os.path.getsize(output_file) / 1024
                 self.log("\n" + "="*70)
                 self.log("✅ SUCCESS!")
@@ -704,12 +719,14 @@ class PPTGeneratorGUI:
                 # Provide helpful error analysis
                 error_hints = []
                 
-                if result.stderr and "not found" in result.stderr.lower():
+                error_text = "\n".join(filter(None, [generator_stderr, generator_error]))
+
+                if error_text and "not found" in error_text.lower():
                     error_hints.append("• Some hymn numbers were not found in your PPT files")
                     error_hints.append("• Check that the hymn numbers in your service file are correct")
                     error_hints.append("• Verify all required PPT files are in the source folder")
                 
-                if result.stderr and ("permission" in result.stderr.lower() or "access" in result.stderr.lower()):
+                if error_text and ("permission" in error_text.lower() or "access" in error_text.lower()):
                     error_hints.append("• Permission denied accessing files")
                     error_hints.append("• Check OneDrive files are not locked or in use")
                     error_hints.append("• Close any open PowerPoint files")
