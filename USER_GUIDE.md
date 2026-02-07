@@ -2,7 +2,7 @@
 
 ## ✨ **Super Simple - No Installation Needed!**
 
-Generate your Holy Communion Service PowerPoint in 3 clicks:
+Generate your Holy Communion Service PowerPoint in 2 easy steps!
 
 ---
 
@@ -17,14 +17,22 @@ Click this link to open the generator:
 
 ---
 
-### **Step 2: Run Each Cell**
-You'll see numbered sections. Just click the **▶️ Play button** on each cell from top to bottom:
+### **Step 2: Follow the 2 Simple Steps**
 
-1. **Cell 1**: Install software (30 seconds)
-2. **Cell 2**: Setup folders (5 seconds)  
-3. **Cell 3**: Upload your service file
-4. **Cell 4**: Generate PowerPoint (10-30 seconds)
-5. **Cell 5**: Download your PPT!
+#### **STEP 1: First-Time Setup (Do This Once)**
+Click the **▶️ Play button** on the first cell:
+- Installs software automatically (30 seconds)
+- Creates folders automatically
+- Prompts you to upload ALL your hymn PPT files at once
+- Takes 1-2 minutes total
+- **You only need to do this ONE TIME!**
+
+#### **STEP 2: Generate Your PowerPoint (Do This Every Time)**
+Click the **▶️ Play button** on the second cell:
+- Upload your service text file
+- Automatically generates PowerPoint (10-30 seconds)
+- Automatically downloads to your computer
+- **That's it! Your PPT is ready!**
 
 ---
 
