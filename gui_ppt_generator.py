@@ -14,6 +14,7 @@ from contextlib import redirect_stdout, redirect_stderr
 from io import StringIO
 from datetime import datetime
 import threading
+import re
 
 class PPTGeneratorGUI:
     def __init__(self, root):
@@ -417,6 +418,33 @@ class PPTGeneratorGUI:
                 normalized_lines.append(cleaned)
 
         return "\n".join(normalized_lines), total_songs, communion_songs
+
+    def _extract_service_date(self, service_text):
+        date_pattern = re.compile(r"^#\s*Date\s*:\s*(.+)$", re.IGNORECASE)
+        for line in service_text.splitlines():
+            match = date_pattern.match(line.strip())
+            if match:
+                return match.group(1).strip()
+        return ""
+
+    def _format_date_for_filename(self, date_text):
+        if not date_text:
+            return ""
+        formats = [
+            "%d %b %Y",
+            "%d %B %Y",
+            "%d-%b-%Y",
+            "%d-%B-%Y",
+            "%d/%m/%Y",
+            "%d-%m-%Y",
+        ]
+        for fmt in formats:
+            try:
+                parsed = datetime.strptime(date_text, fmt)
+                return parsed.strftime("%d_%b_%Y")
+            except ValueError:
+                continue
+        return ""
     
     def log(self, message):
         """Add message to log"""
@@ -490,7 +518,11 @@ class PPTGeneratorGUI:
             self.log("="*70 + "\n")
             
             # Prepare output filename
-            date_str = datetime.now().strftime("%d_%b_%Y")
+            service_text_raw = self.get_service_text()
+            service_date_text = self._extract_service_date(service_text_raw)
+            date_str = self._format_date_for_filename(service_date_text)
+            if not date_str:
+                date_str = datetime.now().strftime("%d_%b_%Y")
             output_file = str(Path.home() / "Desktop" / f"HCS_Malayalam_{date_str}.pptx")
             if os.path.exists(output_file):
                 try:
