@@ -432,7 +432,7 @@ class PPTGeneratorGUI:
         return "\n".join(normalized_lines), total_songs, communion_songs
 
     def _extract_service_date(self, service_text):
-        date_pattern = re.compile(r"^#\s*Date\s*:\s*(.+)$", re.IGNORECASE)
+        date_pattern = re.compile(r"^#?\s*Date\s*:\s*(.+)$", re.IGNORECASE)
         for line in service_text.splitlines():
             match = date_pattern.match(line.strip())
             if match:

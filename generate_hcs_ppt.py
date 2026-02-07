@@ -1646,6 +1646,25 @@ def generate_presentation(song_list, output_filename=None, language="Malayalam",
     print(f"  Language: {language}")
     print(f"  Search directories: {get_search_dirs(language)}")
 
+    def normalize_service_date(date_text):
+        if not date_text:
+            return ""
+        formats = [
+            "%d %b %Y",
+            "%d %B %Y",
+            "%d-%b-%Y",
+            "%d-%B-%Y",
+            "%d/%m/%Y",
+            "%d-%m-%Y",
+        ]
+        for fmt in formats:
+            try:
+                parsed = datetime.strptime(date_text, fmt)
+                return parsed.strftime("%d %B %Y")
+            except ValueError:
+                continue
+        return date_text
+
     # Load template and create presentation
     template_path = find_template_ppt(language)
     if not template_path:
@@ -1656,6 +1675,27 @@ def generate_presentation(song_list, output_filename=None, language="Malayalam",
 
     print(f"  Template: {template_path}")
     prs = Presentation(template_path)
+
+    # Update date in slide masters/layouts if provided
+    normalized_date = normalize_service_date(service_date)
+    if normalized_date:
+        date_pattern = re.compile(r"\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}")
+        for master in prs.slide_masters:
+            for shape in master.shapes:
+                if not shape.has_text_frame:
+                    continue
+                for paragraph in shape.text_frame.paragraphs:
+                    for run in paragraph.runs:
+                        if date_pattern.search(run.text):
+                            run.text = date_pattern.sub(normalized_date, run.text)
+        for layout in prs.slide_layouts:
+            for shape in layout.shapes:
+                if not shape.has_text_frame:
+                    continue
+                for paragraph in shape.text_frame.paragraphs:
+                    for run in paragraph.runs:
+                        if date_pattern.search(run.text):
+                            run.text = date_pattern.sub(normalized_date, run.text)
 
     # Remove all existing slides
     while len(prs.slides) > 0:
@@ -1687,7 +1727,7 @@ def generate_presentation(song_list, output_filename=None, language="Malayalam",
 
     # Create summary slide
     print("\n📋 Creating summary slide...")
-    create_summary_slide(prs, title_layout, song_list, service_date)
+    create_summary_slide(prs, title_layout, song_list, normalized_date)
     slide_counter += 1
 
     # Process each song section
@@ -1846,7 +1886,7 @@ def main():
                         print(f"  Language set to: {language}")
                         continue
                     # Parse date directive
-                    if line.startswith("# Date:"):
+                    if line.lower().startswith("# date:") or line.lower().startswith("date:"):
                         service_date = line.split(":", 1)[1].strip()
                         print(f"  Service date set to: {service_date}")
                         continue
