@@ -70,6 +70,17 @@ SEARCH_DIRS = [
     BASE_DIR,
 ]
 
+def resolve_image_path(filename):
+    """Find an image in the source folder first, then fallback to packaged images."""
+    candidates = [
+        os.path.join(os.getcwd(), "images", filename),
+        os.path.join(BASE_DIR, "images", filename),
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return candidates[0]
+
 def find_template_ppt(language="Malayalam"):
     """Find the template PPT in the selected source folder or fallback paths."""
     template_name = "4 Jan 2026.pptx"
@@ -124,7 +135,8 @@ HC_IMAGE_HEIGHT = Inches(4.437)
 
 def ensure_holy_communion_image():
     """Ensure the Holy Communion image exists in the images folder."""
-    if os.path.exists(HOLY_COMMUNION_IMAGE):
+    target_image = resolve_image_path("holy_communion.jpg")
+    if os.path.exists(target_image):
         return True
     
     # Try to extract from 1 Feb 2026.pptx
@@ -148,9 +160,10 @@ def ensure_holy_communion_image():
         for shape in slide.shapes:
             if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
                 img = shape.image
-                with open(HOLY_COMMUNION_IMAGE, "wb") as f:
+                os.makedirs(os.path.dirname(target_image), exist_ok=True)
+                with open(target_image, "wb") as f:
                     f.write(img.blob)
-                print(f"  ✓ Extracted Holy Communion image to {HOLY_COMMUNION_IMAGE}")
+                print(f"  ✓ Extracted Holy Communion image to {target_image}")
                 return True
     except Exception as e:
         print(f"  ⚠ Could not extract Holy Communion image: {e}")
@@ -699,9 +712,10 @@ def add_holy_communion_intro_slide(prs, blank_layout, hymn_num, song_name=""):
     create_title_bar(slide, prs, "Holy Communion")
 
     # Add the Holy Communion image below the title bar
-    if os.path.exists(HOLY_COMMUNION_IMAGE):
+    hc_image_path = resolve_image_path("holy_communion.jpg")
+    if os.path.exists(hc_image_path):
         slide.shapes.add_picture(
-            HOLY_COMMUNION_IMAGE,
+            hc_image_path,
             HC_IMAGE_LEFT, HC_IMAGE_TOP,
             HC_IMAGE_WIDTH, HC_IMAGE_HEIGHT
         )
@@ -759,7 +773,7 @@ def clone_slides_from_source(source_pptx_path, slide_indices, target_prs,
     qr_code_path = None
     if is_offertory:
         for ext in ['png', 'jpg', 'jpeg']:
-            potential_path = os.path.join(IMAGES_DIR, f"qr_code.{ext}")
+            potential_path = resolve_image_path(f"qr_code.{ext}")
             if os.path.exists(potential_path):
                 qr_code_path = potential_path
                 break
