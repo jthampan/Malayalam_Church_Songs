@@ -19,7 +19,7 @@ import re
 class PPTGeneratorGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Malayalam Church Songs - PPT Generator")
+        self.root.title("Church Songs - PPT Generator")
         self.root.geometry("980x640")  # Larger to fit output box comfortably
         self.root.resizable(False, False)
         
