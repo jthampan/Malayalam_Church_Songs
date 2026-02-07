@@ -202,7 +202,8 @@ class PPTGeneratorGUI:
                     saved_text = data.get("service_text", "").strip()
                     saved_language = data.get("language", "Malayalam").strip()
                     if saved_folder and os.path.isdir(saved_folder):
-                        self.source_folder.set(saved_folder)
+                        normalized_folder = self._normalize_source_folder(saved_folder)
+                        self.source_folder.set(normalized_folder)
                     if saved_text:
                         self.service_text.delete("1.0", tk.END)
                         self.service_text.insert("1.0", saved_text)
@@ -212,7 +213,8 @@ class PPTGeneratorGUI:
                 else:
                     saved_folder = raw
                     if os.path.isdir(saved_folder):
-                        self.source_folder.set(saved_folder)
+                        normalized_folder = self._normalize_source_folder(saved_folder)
+                        self.source_folder.set(normalized_folder)
                         # PPT count will be updated automatically by trace callback
             except:
                 pass
@@ -229,6 +231,14 @@ class PPTGeneratorGUI:
                 f.write(json.dumps(data))
         except:
             pass
+
+    def _normalize_source_folder(self, folder_path):
+        base_path = Path(folder_path)
+        if base_path.name in ("Malayalam HCS", "English HCS"):
+            parent = base_path.parent
+            if parent.name == "Holy Communion Services - Slides":
+                return str(parent)
+        return folder_path
 
     def _on_service_text_change(self, event=None):
         if self._is_loading:
