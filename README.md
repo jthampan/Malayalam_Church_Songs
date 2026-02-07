@@ -4,11 +4,23 @@ Automated PowerPoint generation tool for Mar Thoma Syrian Church Malayalam Holy 
 
 ## 🚀 **Quick Start for Users**
 
-**No Python installation needed!** Use Google Colab:
+### Option 1: Web-Based (Any Device) 🌐
+**No installation needed!** Use Google Colab in your browser:
 
 👉 **[CLICK HERE TO GENERATE YOUR PPT](https://colab.research.google.com/github/jthampan/Malayalam_Church_Songs/blob/main/Malayalam_Church_Songs_Generator.ipynb)**
 
 📖 **[User Guide](USER_GUIDE.md)** - Simple instructions for non-technical users
+
+### Option 2: Windows Executable 🖥️
+**Standalone Windows app** - No browser, no internet needed:
+
+📥 **[Download Windows .exe](WINDOWS_EXE_GUIDE.md)** - Double-click and go!
+
+📖 **[Windows Guide](WINDOWS_EXE_GUIDE.md)** - Installation and usage instructions
+
+**Which one should I use?**
+- ✅ Use **Google Colab** if you want to work from any device (Windows, Mac, Linux, Chromebook, tablet)
+- ✅ Use **Windows .exe** if you prefer a traditional desktop app with no browser/internet dependency
 
 ---
 
@@ -137,6 +149,65 @@ Communion:     331 swargga raaja puthrare
                343 Yaahenna Daivam Ennidayanaho
 Closing:       yeshuveppole aakuvaan
 ```
+
+---
+
+## 🏗️ Building Windows Executable (For Developers)
+
+Want to create a standalone .exe file for church members who prefer a desktop app?
+
+### Prerequisites
+- Python 3.8 or higher
+- Windows OS (for building Windows executables)
+
+### Build Steps
+
+#### Option 1: Automated Build (Recommended)
+```bash
+# Clone the repository
+git clone https://github.com/jthampan/Malayalam_Church_Songs.git
+cd Malayalam_Church_Songs
+
+# Run the Windows batch file
+build_windows_exe.bat
+```
+The executable will be created in `dist/Church_Songs_Generator.exe`
+
+#### Option 2: Manual Build
+```bash
+# Install dependencies
+pip install pyinstaller python-pptx pandas openpyxl
+
+# Run the build script
+python build_exe.py
+```
+
+### What Gets Built
+- **File:** `Church_Songs_Generator.exe`
+- **Size:** ~15-20 MB (includes Python runtime and all dependencies)
+- **Portable:** No installation required, runs on any Windows computer
+- **Features:**
+  - Simple GUI with browse buttons
+  - One-time source folder setup (remembered)
+  - Real-time progress and output log
+  - Auto-saves to Desktop
+  - Opens PowerPoint when done
+
+### Distribution
+1. Upload `dist/Church_Songs_Generator.exe` to GitHub Releases
+2. Church members download the .exe
+3. Double-click to run - no Python needed!
+4. See [WINDOWS_EXE_GUIDE.md](WINDOWS_EXE_GUIDE.md) for user instructions
+
+### GUI Features
+- **Source PPT Folder**: One-time setup, path is saved
+- **Service File Selection**: File browser
+- **Generate Button**: Large, prominent, easy to click
+- **Progress Bar**: Visual feedback during generation
+- **Output Log**: Shows all messages and errors
+- **Auto-open**: Option to open PowerPoint immediately
+
+---
 
 ## License
 
