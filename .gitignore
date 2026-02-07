@@ -27,9 +27,6 @@ malayalam_hymns_report.xlsx
 ~$*.pptx
 ~$*.xlsx
 
-# Images
-images/
-
 # Large data files
 OneDrive*/
 Hymns_malayalam_KK.pptx
