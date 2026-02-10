@@ -563,10 +563,10 @@ class PPTGeneratorGUI:
                         "Please close the PPT if it is open and try again."
                     )
             
-            # Find generate_hcs_ppt.py
+            # Find generate_malayalam_hcs_ppt.py
             script_path = self._find_generator_script()
             if not script_path:
-                raise Exception("Generator script not found. Please ensure generate_hcs_ppt.py is in the same folder as this program.")
+                raise Exception("Malayalam Generator script not found. Please ensure generate_malayalam_hcs_ppt.py is in the same folder as this program.")
             
             # Get full paths
             service_text_raw = self.get_service_text()
@@ -624,10 +624,10 @@ class PPTGeneratorGUI:
 
             try:
                 try:
-                    import generate_hcs_ppt
+                    import generate_malayalam_hcs_ppt
                 except Exception as e:
                     raise Exception(
-                        "Cannot load generate_hcs_ppt.py. Please ensure it is packaged with the app.\n\n"
+                        "Cannot load generate_malayalam_hcs_ppt.py. Please ensure it is packaged with the app.\n\n"
                         f"Error: {str(e)}"
                     )
 
@@ -641,7 +641,7 @@ class PPTGeneratorGUI:
                     os.chdir(self.source_folder.get())
 
                     with redirect_stdout(stdout_buf), redirect_stderr(stderr_buf):
-                        generate_hcs_ppt.main()
+                        generate_malayalam_hcs_ppt.main()
                 finally:
                     sys.argv = original_argv
                     os.chdir(original_cwd)
@@ -791,9 +791,9 @@ class PPTGeneratorGUI:
             pass
     
     def _find_generator_script(self):
-        """Find generate_hcs_ppt.py in various locations"""
+        """Find generate_malayalam_hcs_ppt.py in various locations"""
         # Check current directory
-        script_name = "generate_hcs_ppt.py"
+        script_name = "generate_malayalam_hcs_ppt.py"
         
         # Same directory as this script
         current_dir = Path(__file__).parent if hasattr(sys, '_MEIPASS') else Path.cwd()
