@@ -21,17 +21,8 @@ test*.txt
 debug*.py
 
 # Generated files
-*.pptx
 !template*.pptx
-malayalam_hymns_report.xlsx
-~$*.pptx
-~$*.xlsx
 
 # Large data files
-OneDrive*/
-Hymns_malayalam_KK.pptx
 Kristeeya Keerthanagal.pdf
 
-# OS
-.DS_Store
-Thumbs.db
