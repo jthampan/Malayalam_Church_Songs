@@ -12,10 +12,11 @@ from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils import get_column_letter
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PARENT_DIR = os.path.dirname(BASE_DIR)
 
 # Only search English directories
 ENGLISH_SEARCH_DIRS = [
-    os.path.join(BASE_DIR, "OneDrive_2026-02-05", "Holy Communion Services - Slides", "English HCS"),
+    os.path.join(PARENT_DIR, "onedrive_git_local", "Holy Communion Services - Slides", "English HCS"),
 ]
 
 

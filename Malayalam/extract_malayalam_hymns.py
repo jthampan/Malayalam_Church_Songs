@@ -6,16 +6,18 @@ Lists hymn number, title (from Manglish or Malayalam content), slide location, a
 
 import os
 import re
+import json
 from pptx import Presentation
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
 from openpyxl.utils import get_column_letter
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PARENT_DIR = os.path.dirname(BASE_DIR)
 
 # Only search Malayalam directories
 MALAYALAM_SEARCH_DIRS = [
-    os.path.join(BASE_DIR, "OneDrive_2026-02-05", "Holy Communion Services - Slides", "Malayalam HCS"),
+    os.path.join(PARENT_DIR, "onedrive_git_local", "Holy Communion Services - Slides", "Malayalam HCS"),
 ]
 
 
@@ -433,6 +435,16 @@ def analyze_pptx_file(pptx_path):
 
 def create_excel_report(all_hymns, output_file):
     """Create an Excel file with hymn information from Malayalam files."""
+    # Load KK hymn mapping JSON
+    kk_json_path = os.path.join(BASE_DIR, "kk_hymn_mapping.json")
+    kk_hymns = {}
+    if os.path.exists(kk_json_path):
+        with open(kk_json_path, 'r', encoding='utf-8') as f:
+            kk_hymns = json.load(f)
+        print(f"\n📋 Loaded {len(kk_hymns)} hymns from kk_hymn_mapping.json")
+    else:
+        print(f"\n⚠ Warning: kk_hymn_mapping.json not found at {kk_json_path}")
+    
     # Sort: hymns with numbers first (by number), then title-only hymns (alphabetically)
     def sort_key(x):
         if x['hymn_number']:
@@ -444,54 +456,150 @@ def create_excel_report(all_hymns, output_file):
     
     # Create workbook
     wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "Malayalam Hymns"
+    
+    # ============= TAB 1: Sort by Hymn Number =============
+    ws1 = wb.active
+    ws1.title = "Sort by Hymn Number"
     
     # Define headers
     headers = ['Hymn Number', 'Title', 'Slide Name']
-    ws.append(headers)
+    ws1.append(headers)
     
     # Style headers
     header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
     header_font = Font(bold=True, color="FFFFFF", size=12)
     
     for col in range(1, len(headers) + 1):
-        cell = ws.cell(row=1, column=col)
+        cell = ws1.cell(row=1, column=col)
         cell.fill = header_fill
         cell.font = header_font
         cell.alignment = Alignment(horizontal='center', vertical='center')
     
-    # Add data
+    # Add data sorted by hymn number
     for hymn in all_hymns:
         row_data = [
-            int(hymn['hymn_number']) if hymn['hymn_number'] else '',  # Empty if no number
+            int(hymn['hymn_number']) if hymn['hymn_number'] else '',
             clean_text_for_excel(hymn['title']),
             clean_text_for_excel(hymn['file_name'])
         ]
-        ws.append(row_data)
+        ws1.append(row_data)
     
     # Auto-adjust column widths
     for col in range(1, len(headers) + 1):
         column_letter = get_column_letter(col)
         max_length = 0
         
-        for cell in ws[column_letter]:
+        for cell in ws1[column_letter]:
             try:
                 if len(str(cell.value)) > max_length:
                     max_length = len(str(cell.value))
             except:
                 pass
         
-        adjusted_width = min(max_length + 2, 60)  # Cap at 60 for Malayalam text
-        ws.column_dimensions[column_letter].width = adjusted_width
+        adjusted_width = min(max_length + 2, 60)
+        ws1.column_dimensions[column_letter].width = adjusted_width
     
     # Center align hymn number column
-    for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
-        row[0].alignment = Alignment(horizontal='center')  # Hymn Number
+    for row in ws1.iter_rows(min_row=2, max_row=ws1.max_row):
+        row[0].alignment = Alignment(horizontal='center')
+    
+    # ============= TAB 2: Sort by Filename =============
+    ws2 = wb.create_sheet(title="Sort by Filename")
+    
+    # Headers
+    ws2.append(headers)
+    for col in range(1, len(headers) + 1):
+        cell = ws2.cell(row=1, column=col)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+    
+    # Sort by filename
+    all_hymns_by_file = sorted(all_hymns, key=lambda x: (x['file_name'], int(x['hymn_number']) if x['hymn_number'] else 9999))
+    
+    # Add data sorted by filename
+    for hymn in all_hymns_by_file:
+        row_data = [
+            int(hymn['hymn_number']) if hymn['hymn_number'] else '',
+            clean_text_for_excel(hymn['title']),
+            clean_text_for_excel(hymn['file_name'])
+        ]
+        ws2.append(row_data)
+    
+    # Auto-adjust column widths
+    for col in range(1, len(headers) + 1):
+        column_letter = get_column_letter(col)
+        max_length = 0
+        
+        for cell in ws2[column_letter]:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        
+        adjusted_width = min(max_length + 2, 60)
+        ws2.column_dimensions[column_letter].width = adjusted_width
+    
+    # Center align hymn number column
+    for row in ws2.iter_rows(min_row=2, max_row=ws2.max_row):
+        row[0].alignment = Alignment(horizontal='center')
+    
+    # ============= TAB 3: KK Hymn Mapping =============
+    ws3 = wb.create_sheet(title="KK Hymn Mapping")
+    
+    # Headers (same as others)
+    ws3.append(headers)
+    for col in range(1, len(headers) + 1):
+        cell = ws3.cell(row=1, column=col)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+    
+    # Sort KK hymns by hymn number
+    kk_sorted = []
+    for hymn_num, title in kk_hymns.items():
+        if hymn_num:  # Skip empty hymn numbers
+            kk_sorted.append((int(hymn_num) if hymn_num.isdigit() else 9999, hymn_num, title))
+        else:
+            kk_sorted.append((9999, '', title))
+    
+    kk_sorted.sort()
+    
+    # Add KK hymns data
+    for _, hymn_num, title in kk_sorted:
+        row_data = [
+            hymn_num if hymn_num else '',
+            clean_text_for_excel(title),
+            "Hymns_malayalam_KK.pptx"
+        ]
+        ws3.append(row_data)
+    
+    # Auto-adjust column widths
+    for col in range(1, len(headers) + 1):
+        column_letter = get_column_letter(col)
+        max_length = 0
+        
+        for cell in ws3[column_letter]:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        
+        adjusted_width = min(max_length + 2, 60)
+        ws3.column_dimensions[column_letter].width = adjusted_width
+    
+    # Center align hymn number column
+    for row in ws3.iter_rows(min_row=2, max_row=ws3.max_row):
+        row[0].alignment = Alignment(horizontal='center')
     
     # Save workbook
     wb.save(output_file)
     print(f"\n✓ Excel report saved to: {output_file}")
+    print(f"  Tab 1: Sort by Hymn Number ({len(all_hymns)} entries)")
+    print(f"  Tab 2: Sort by Filename ({len(all_hymns_by_file)} entries)")
+    print(f"  Tab 3: KK Hymn Mapping ({len(kk_sorted)} entries)")
 
 
 def main():
