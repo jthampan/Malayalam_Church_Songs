@@ -142,14 +142,6 @@ else:
 
 print()
 
-# Clean previous builds
-if os.path.exists('build'):
-    print("🧹 Cleaning previous build directory...")
-    shutil.rmtree('build')
-if os.path.exists('dist'):
-    print("🧹 Cleaning previous dist directory...")
-    shutil.rmtree('dist')
-
 # Ensure the old exe is not running (prevents WinError 5)
 try:
     subprocess.run(
@@ -161,11 +153,37 @@ try:
 except Exception:
     pass
 
+# Clean previous builds with retry logic
+import time
+for folder in ['build', 'dist']:
+    if os.path.exists(folder):
+        print(f"🧹 Cleaning previous {folder} directory...")
+        for attempt in range(3):
+            try:
+                shutil.rmtree(folder, ignore_errors=False)
+                break
+            except Exception as e:
+                if attempt < 2:
+                    time.sleep(1)  # Wait and retry
+                else:
+                    print(f"⚠️  Warning: Could not fully clean {folder}: {e}")
+                    try:
+                        shutil.rmtree(folder, ignore_errors=True)  # Force with ignore_errors
+                    except:
+                        pass
+
 print("🔨 Building Windows Executable...")
 print("="*60)
 print()
+print("ℹ️  Note: --onefile mode may take 30-60 seconds to start")
+print("   (PyInstaller extracts ~250MB to temp folder)")
+print("   For faster startup, consider using --onedir mode")
+print()
 
 # Build arguments - include the Malayalam generator from parent/Malayalam folder
+# NOTE: Using --onefile for easy distribution (single exe)
+# This causes slower startup (~30-60 sec) due to temp extraction
+# For faster startup (~5 sec), replace --onefile with --onedir
 PyInstaller.__main__.run([
     'gui_ppt_generator.py',           # Main script
     '--onefile',                       # Single executable
@@ -175,6 +193,28 @@ PyInstaller.__main__.run([
     f'--add-data={malayalam_script};.',  # Include Malayalam generator
     f'--add-data={images_dir};images' if images_dir.exists() else '--',  # Include images folder
     f'--add-data={onedrive_git_local};onedrive_git_local' if onedrive_git_local.exists() else '--',  # Include PPT files
+    '--hidden-import=pptx',            # Include python-pptx
+    '--hidden-import=pptx.util',       # Include pptx utilities
+    '--hidden-import=pptx.dml.color',  # Include pptx color
+    '--hidden-import=pptx.enum.text',  # Include pptx enums
+    '--hidden-import=pptx.enum.shapes',# Include pptx shape enums
+    # Exclude UNUSED heavy packages (saves ~100MB and improves startup)
+    '--exclude-module=pandas',         # Not used - data analysis
+    '--exclude-module=numpy',          # Not used - numerical computing
+    '--exclude-module=openpyxl',       # Not used - Excel (only extract script uses it)
+    '--exclude-module=matplotlib',     # Not used - charts/plotting
+    '--exclude-module=scipy',          # Not used - scientific computing
+    '--exclude-module=IPython',        # Not used - interactive Python
+    '--exclude-module=jupyter',        # Not used - notebooks
+    '--exclude-module=pytest',         # Not used - testing
+    '--exclude-module=setuptools',     # Not used - installation tools
+    '--exclude-module=pip',            # Not used - package installer
+    '--exclude-module=wheel',          # Not used - packaging
+    '--exclude-module=numba',          # Not used - JIT compiler
+    '--exclude-module=llvmlite',       # Not used - LLVM binding
+    '--exclude-module=jinja2',         # Not used - templating
+    '--exclude-module=cryptography',   # Not used - encryption
+    '--exclude-module=pytz',           # Not used - timezones
     '--clean',                         # Clean cache
     '--noconfirm',                     # Overwrite without asking
 ])

@@ -85,7 +85,7 @@ class PPTGeneratorGUI:
         lang_combo.current(0)
         
         # Source folder
-        source_label = tk.Label(main_frame, text="Source Folder:", font=("Arial", 10))
+        source_label = tk.Label(main_frame, text="Source Folder (Optional):", font=("Arial", 10))
         source_label.grid(row=1, column=0, sticky=tk.W, pady=5)
         
         source_entry = tk.Entry(main_frame, textvariable=self.source_folder, width=40)
@@ -115,7 +115,7 @@ class PPTGeneratorGUI:
         # Help text
         help_label = tk.Label(
             main_frame,
-            text="💡 Tip: Use OneDrive Desktop sync, then browse to C:\\Users\\...\\OneDrive\\... folder",
+            text="💡 Tip: Source folder is optional. App includes bundled PPT files. Browse to use your OneDrive folder.",
             font=("Arial", 8),
             fg="#7f8c8d"
         )
@@ -267,7 +267,26 @@ class PPTGeneratorGUI:
         folder_path = self.source_folder.get().strip()
         
         if not folder_path:
-            self.ppt_count.set("No folder selected")
+            # Check if bundled files exist for the selected language
+            try:
+                bundled_path = self.get_bundled_folder_path()
+                if bundled_path and os.path.isdir(bundled_path):
+                    # Get language-specific folder
+                    language = self.language.get()
+                    lang_folder = Path(bundled_path) / (f"{language} HCS")
+                    
+                    if lang_folder.exists():
+                        ppt_files = list(lang_folder.glob("**/*.ppt*"))
+                        if len(ppt_files) > 0:
+                            self.ppt_count.set(f"✓ Using bundled {language} files ({len(ppt_files)} PPT)")
+                        else:
+                            self.ppt_count.set(f"No bundled {language} files found")
+                    else:
+                        self.ppt_count.set("No folder selected")
+                else:
+                    self.ppt_count.set("No folder selected")
+            except Exception as e:
+                self.ppt_count.set("No folder selected")
             return
         
         if not os.path.isdir(folder_path):
@@ -341,7 +360,24 @@ class PPTGeneratorGUI:
         
         # User selected a specific folder - use as-is
         return base_folder
-    
+
+    def get_bundled_folder_path(self):
+        """Get path to bundled onedrive_git_local folder"""
+        try:
+            # If running from PyInstaller bundle
+            if getattr(sys, 'frozen', False):
+                base_path = Path(sys._MEIPASS)
+            else:
+                # Running in dev mode
+                base_path = Path(__file__).parent.parent
+            
+            bundled_folder = base_path / "onedrive_git_local" / "Holy Communion Services - Slides"
+            if bundled_folder.exists():
+                return str(bundled_folder)
+        except:
+            pass
+        return None
+
     def select_source_folder(self):
         """Select folder containing source PPT files"""
         folder = filedialog.askdirectory(
@@ -482,16 +518,8 @@ class PPTGeneratorGUI:
     
     def generate_ppt(self):
         """Generate PowerPoint in a background thread"""
-        # Validate inputs
-        if not self.source_folder.get():
-            messagebox.showerror(
-                "Missing Source Folder",
-                "Please select your source PPT folder first (One-Time Setup section)."
-            )
-            return
-        
-        # Validate source folder exists
-        if not os.path.exists(self.source_folder.get()):
+        # Validate source folder if provided
+        if self.source_folder.get() and not os.path.exists(self.source_folder.get()):
             messagebox.showerror(
                 "Source Folder Not Found",
                 f"The source folder no longer exists:\n\n{self.source_folder.get()}\n\n"
@@ -505,20 +533,21 @@ class PPTGeneratorGUI:
             )
             return
         
-        # Validate source folder has PPT files
-        ppt_files = list(Path(self.source_folder.get()).glob("**/*.ppt*"))  # Recursive search
-        if len(ppt_files) == 0:
-            messagebox.showerror(
-                "No PowerPoint Files Found",
-                f"No PowerPoint files found in:\n\n{self.source_folder.get()}\n\n"
-                "Please make sure:\n"
-                "• You selected the correct folder with hymn PPT files\n"
-                "• Files have .pptx or .ppt extension\n"
-                "• OneDrive files are downloaded (not cloud-only)\n\n"
-                "If using OneDrive:\n"
-                "→ Right-click folder → 'Always keep on this device'"
-            )
-            return
+        # Validate source folder has PPT files (only if folder provided)
+        if self.source_folder.get():
+            ppt_files = list(Path(self.source_folder.get()).glob("**/*.ppt*"))  # Recursive search
+            if len(ppt_files) == 0:
+                messagebox.showerror(
+                    "No PowerPoint Files Found",
+                    f"No PowerPoint files found in:\n\n{self.source_folder.get()}\n\n"
+                    "Please make sure:\n"
+                    "• You selected the correct folder with hymn PPT files\n"
+                    "• Files have .pptx or .ppt extension\n"
+                    "• OneDrive files are downloaded (not cloud-only)\n\n"
+                    "If using OneDrive:\n"
+                    "→ Right-click folder → 'Always keep on this device'"
+                )
+                return
             
         service_text = self.get_service_text()
         if not service_text:
@@ -575,7 +604,8 @@ class PPTGeneratorGUI:
             # Debug logging
             self.log("📄 Service list: (input box)")
             self.log(f"🧮 Parsed songs: {total_songs} (Communion: {communion_songs})")
-            self.log(f"📁 Source folder: {self.source_folder.get()}")
+            source_display = self.source_folder.get() if self.source_folder.get() else "(Using bundled files)"
+            self.log(f"📁 Source folder: {source_display}")
             self.log(f"🌐 Language: {self.language.get()}")
             self.log(f"💾 Output: {output_file}\n")
             
@@ -638,7 +668,9 @@ class PPTGeneratorGUI:
 
                 try:
                     sys.argv = [script_path, "--batch", str(temp_batch_file), output_file]
-                    os.chdir(self.source_folder.get())
+                    # Change to source folder if provided, otherwise use bundled folder
+                    work_dir = self.source_folder.get() if self.source_folder.get() else (self.get_bundled_folder_path() or original_cwd)
+                    os.chdir(work_dir)
 
                     with redirect_stdout(stdout_buf), redirect_stderr(stderr_buf):
                         generate_malayalam_hcs_ppt.main()
