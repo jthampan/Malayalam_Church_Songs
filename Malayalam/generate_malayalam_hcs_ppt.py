@@ -28,6 +28,7 @@ Images are extracted and saved to the 'images/' folder.
 import os
 import sys
 import re
+from kk_hymn_search import find_hymn_in_kk_pptx
 from copy import deepcopy
 from datetime import datetime
 from io import BytesIO
@@ -52,156 +53,13 @@ IMAGES_DIR = os.path.join(PARENT_DIR, "images")
 # Create images directory if it doesn't exist
 os.makedirs(IMAGES_DIR, exist_ok=True)
 
-# Fallback to onedrive_git_local if OneDrive not found
+# Path to bundled/local hymn files folder
+# NOTE: For exe builds, this folder is bundled at BUILD TIME by build_exe.py
 ONEDRIVE_GIT_LOCAL = os.path.join(PARENT_DIR, "onedrive_git_local")
 
-# Git repository URL for downloading onedrive_git_local
-# NOTE: For exe builds, onedrive_git_local is included at BUILD TIME by build_exe.py
-# This URL is used only when running the script directly (not from exe)
-# For public repos: use https://github.com/username/repo.git
-# For private repos: use https://TOKEN@github.com/username/repo.git (replace TOKEN with your PAT)
-# Or set to None to disable auto-download and require manual setup
-GIT_REPO_URL = "https://github.com/jthampan/Malayalam_Church_Songs.git"
-GIT_BRANCH = "main"  # Branch containing onedrive_git_local folder
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
-# ONEDRIVE GIT LOCAL MANAGEMENT
+# FILE PATHS
 # ═══════════════════════════════════════════════════════════════════════════════
-
-def ensure_onedrive_git_local():
-    """
-    Ensure onedrive_git_local folder exists by downloading from git if needed.
-    This provides an offline fallback for PPT files when OneDrive is not synced.
-    
-    Returns True if folder exists/was downloaded successfully, False otherwise.
-    """
-    # If folder already exists, we're good
-    if os.path.isdir(ONEDRIVE_GIT_LOCAL):
-        # Check if it has content (at least the slides folder structure)
-        slides_folder = os.path.join(ONEDRIVE_GIT_LOCAL, "Holy Communion Services - Slides")
-        if os.path.isdir(slides_folder):
-            print(f"  ✓ Using cached onedrive_git_local folder")
-            return True
-        else:
-            print(f"  ⚠ onedrive_git_local exists but appears incomplete, re-downloading...")
-            shutil.rmtree(ONEDRIVE_GIT_LOCAL, ignore_errors=True)
-    
-    # Check if git download is disabled
-    if not GIT_REPO_URL:
-        print(f"  ℹ Auto-download disabled (GIT_REPO_URL not configured)")
-        print(f"  ℹ Please manually copy onedrive_git_local folder to: {PARENT_DIR}")
-        return False
-    
-    # Try to download from git
-    print(f"  📥 Downloading onedrive_git_local from git repository...")
-    print(f"  🔗 Repository: {GIT_REPO_URL.replace(GIT_REPO_URL.split('@')[0].split('//')[1] + '@', '***@') if '@' in GIT_REPO_URL else GIT_REPO_URL}")
-    
-    # Check if git is available
-    try:
-        subprocess.run(["git", "--version"], capture_output=True, check=True)
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        print(f"  ⚠ Git not installed - cannot download onedrive_git_local")
-        print(f"  ℹ Please install git or manually copy onedrive_git_local folder to: {PARENT_DIR}")
-        return False
-    
-    # Create a temporary directory for cloning
-    temp_clone_dir = os.path.join(PARENT_DIR, ".temp_git_clone")
-    
-    try:
-        # Clean up any previous temp directory
-        if os.path.exists(temp_clone_dir):
-            shutil.rmtree(temp_clone_dir, ignore_errors=True)
-        
-        # Clone with sparse checkout to get only onedrive_git_local folder
-        print(f"  ⏳ Cloning repository (this may take a few minutes)...")
-        
-        # Initialize git repo with sparse checkout
-        os.makedirs(temp_clone_dir, exist_ok=True)
-        subprocess.run(
-            ["git", "init"],
-            cwd=temp_clone_dir,
-            capture_output=True,
-            check=True
-        )
-        
-        subprocess.run(
-            ["git", "remote", "add", "origin", GIT_REPO_URL],
-            cwd=temp_clone_dir,
-            capture_output=True,
-            check=True
-        )
-        
-        subprocess.run(
-            ["git", "config", "core.sparseCheckout", "true"],
-            cwd=temp_clone_dir,
-            capture_output=True,
-            check=True
-        )
-        
-        # Specify that we only want the onedrive_git_local folder
-        sparse_checkout_file = os.path.join(temp_clone_dir, ".git", "info", "sparse-checkout")
-        os.makedirs(os.path.dirname(sparse_checkout_file), exist_ok=True)
-        with open(sparse_checkout_file, "w") as f:
-            f.write("onedrive_git_local/\n")
-        
-        # Pull the specific folder
-        result = subprocess.run(
-            ["git", "pull", "origin", GIT_BRANCH],
-            cwd=temp_clone_dir,
-            capture_output=True,
-            timeout=300  # 5 minute timeout
-        )
-        
-        # Check for authentication errors
-        if result.returncode != 0:
-            error_msg = result.stderr.decode('utf-8', errors='ignore').lower()
-            if 'authentication' in error_msg or 'credential' in error_msg or '403' in error_msg or '401' in error_msg:
-                print(f"  ⚠ Authentication required for private repository")
-                print(f"  ℹ Options:")
-                print(f"     1. Make the repository public on GitHub")
-                print(f"     2. Use a Personal Access Token in GIT_REPO_URL")
-                print(f"        Format: https://TOKEN@github.com/username/repo.git")
-                print(f"     3. Manually copy onedrive_git_local folder to: {PARENT_DIR}")
-                shutil.rmtree(temp_clone_dir, ignore_errors=True)
-                return False
-            else:
-                print(f"  ⚠ Git clone failed: {result.stderr.decode('utf-8', errors='ignore')}")
-                shutil.rmtree(temp_clone_dir, ignore_errors=True)
-                return False
-        
-        # Move the downloaded folder to the target location
-        downloaded_folder = os.path.join(temp_clone_dir, "onedrive_git_local")
-        if os.path.isdir(downloaded_folder):
-            shutil.move(downloaded_folder, ONEDRIVE_GIT_LOCAL)
-            print(f"  ✓ Successfully downloaded onedrive_git_local to: {ONEDRIVE_GIT_LOCAL}")
-            
-            # Clean up temp directory
-            shutil.rmtree(temp_clone_dir, ignore_errors=True)
-            return True
-        else:
-            print(f"  ⚠ onedrive_git_local folder not found in repository")
-            print(f"  ℹ Please ensure the repository contains an 'onedrive_git_local' folder")
-            shutil.rmtree(temp_clone_dir, ignore_errors=True)
-            return False
-            
-    except subprocess.TimeoutExpired:
-        print(f"  ⚠ Git clone timed out - repository may be too large or network is slow")
-        print(f"  ℹ Please manually copy onedrive_git_local folder to: {PARENT_DIR}")
-        shutil.rmtree(temp_clone_dir, ignore_errors=True)
-        return False
-    except subprocess.CalledProcessError as e:
-        error_msg = e.stderr.decode('utf-8', errors='ignore') if e.stderr else str(e)
-        print(f"  ⚠ Git clone failed: {error_msg}")
-        print(f"  ℹ Please check the repository URL and your internet connection")
-        shutil.rmtree(temp_clone_dir, ignore_errors=True)
-        return False
-    except Exception as e:
-        print(f"  ⚠ Error downloading onedrive_git_local: {e}")
-        print(f"  ℹ Please manually copy onedrive_git_local folder to: {PARENT_DIR}")
-        shutil.rmtree(temp_clone_dir, ignore_errors=True)
-        return False
-
 
 TEMPLATE_PPT = os.path.join(
     ONEDRIVE_GIT_LOCAL,
@@ -562,7 +420,16 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
         return letter_count < 30
 
     def build_hymn_pattern(num):
-        return r"(?:Hymn\s*(?:No\.?\s*)?[-–]?\s*|Song\s*No\.?\s*)" + re.escape(num) + r"\b"
+        # Pattern: "Hymn No 171" or "Song No 171"
+        return r"(?:Hymn\s*(?:No\.?\s*)?[-–]?\s*|Song\s*No\.?\s*)" + re.escape(num) + r"(?:\s|\b)"
+    
+    def find_hymn_in_text(target_num, text):
+        """Find hymn number in text using regular service PPT patterns."""
+        if not target_num:
+            return False
+        
+        hymn_pattern = build_hymn_pattern(target_num)
+        return bool(re.search(hymn_pattern, text, re.IGNORECASE))
 
     for i, slide in enumerate(prs.slides):
         all_text = ""
@@ -580,8 +447,7 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
         # Check for hymn number match (if hymn number provided)
         hymn_match = False
         if target:
-            hymn_pattern = build_hymn_pattern(target)
-            hymn_match = bool(re.search(hymn_pattern, all_text, re.IGNORECASE))
+            hymn_match = find_hymn_in_text(target, all_text)
         
         # Check for song title match (if title provided)
         title_match = False
@@ -604,7 +470,6 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
 
         if is_match and not collecting:
             # Found start of our song - this is the title slide
-            title_slide_idx = i
             # Store the hymn number found on this slide (if any) for tracking
             hymn_found_on_title = re.search(r"Hymn\s*(?:No\.?\s*)?[-–]?\s*(\d+)", all_text, re.IGNORECASE)
             found_hymn_num = hymn_found_on_title.group(1) if hymn_found_on_title else ""
@@ -614,6 +479,8 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
                 if sec.lower() in all_text.lower():
                     found_section = sec
                     break
+            
+            title_slide_idx = i
             collecting = True
             # Only add title slide to content if it has lyrics and isn't image-only
             if slide_has_lyrics(all_text) and not is_image_only_slide(slide):
@@ -756,6 +623,10 @@ def find_best_song_source(hymn_num, song_name):
     Returns the source with the most content slides.
     Tracks used slide ranges to prevent adding the same hymn content twice.
     
+    Search priority:
+    1. First search all non-KK PPT files (actual service presentations)
+    2. Only if not found, search KK.pptx files (hymn book as last resort)
+    
     Args:
         hymn_num: The hymn number to search for
         song_name: Optional song title hint
@@ -764,13 +635,18 @@ def find_best_song_source(hymn_num, song_name):
     """
     pptx_files = find_all_pptx_files(SEARCH_DIRS)
     
+    # Separate KK files from regular service PPT files
+    kk_files = [pf for pf in pptx_files if "KK" in os.path.basename(pf).upper() or "Kristeeya" in os.path.basename(pf)]
+    regular_files = [pf for pf in pptx_files if pf not in kk_files]
+    
     best_source = None
     best_count = 0
     best_title_idx = None
     best_content = []
     best_extracted_title = ""
     
-    for pf in pptx_files:
+    # First search regular service PPT files
+    for pf in regular_files:
         t_idx, c_indices, extracted_title = find_song_slide_indices_in_pptx(pf, hymn_num, song_name)
         if c_indices and len(c_indices) > best_count:
             # Check if these slides were already used BY A DIFFERENT HYMN NUMBER
@@ -782,6 +658,21 @@ def find_best_song_source(hymn_num, song_name):
                 best_title_idx = t_idx
                 best_content = c_indices
                 best_extracted_title = extracted_title
+    
+    # If not found in regular files, search KK files as last resort
+    if not best_source:
+        for pf in kk_files:
+            # Use specialized KK search function for KK.pptx files
+            t_idx, c_indices, extracted_title = find_hymn_in_kk_pptx(pf, hymn_num)
+            
+            if c_indices and len(c_indices) > best_count:
+                slide_key = f"{pf}:{min(c_indices)}-{max(c_indices)}"
+                if slide_key not in USED_SLIDE_RANGES or USED_SLIDE_RANGES[slide_key] == hymn_num:
+                    best_source = pf
+                    best_count = len(c_indices)
+                    best_title_idx = t_idx
+                    best_content = c_indices
+                    best_extracted_title = extracted_title
     
     # Mark these slides as used if we found something
     if best_source and best_content:
@@ -1266,17 +1157,13 @@ def update_title_bar_text(slide, label, hymn_num, song_name=""):
             continue
         
         try:
-            # Update the text to match the section
+            # Update the text to show only section label
             shape.text_frame.clear()
             p = shape.text_frame.paragraphs[0]
             p.alignment = PP_ALIGN.CENTER
             run = p.add_run()
-            if hymn_num:
-                run.text = f"{label} Hymn- {hymn_num}"
-            elif song_name:
-                run.text = f"{label} Hymn - {song_name}"
-            else:
-                run.text = f"{label} Hymn"
+            # Show only the section label (e.g., "Opening", "ThanksGiving", "Confession")
+            run.text = label
             run.font.name = "Calibri"
             run.font.size = Pt(32)
             run.font.bold = True
@@ -1337,8 +1224,8 @@ def process_opening_song(prs, title_layout, blank_layout, hymn_num, song_name, s
     """Process Opening Song section."""
     label = "Opening"
     
-    # Find the best source (most slides) across all PPT files
-    best_pf, t_idx, c_indices, extracted_title = find_best_song_source(hymn_num, song_name, )
+    # Find the best source (most slides) across all PPT files, prioritizing "Opening" section in KK.pptx
+    best_pf, t_idx, c_indices, extracted_title = find_best_song_source(hymn_num, song_name, label)
     
     if best_pf and c_indices:
         display_title = extracted_title if extracted_title else song_name
@@ -1839,13 +1726,6 @@ def generate_presentation(song_list, output_filename=None, service_date=None):
     global USED_SLIDE_RANGES
     USED_SLIDE_RANGES = {}
     
-    # Ensure onedrive_git_local is available (download if needed)
-    # Note: When running from exe, onedrive_git_local is already bundled
-    # This only downloads when running the script directly
-    if not os.path.isdir(ONEDRIVE_GIT_LOCAL) or not os.path.isdir(os.path.join(ONEDRIVE_GIT_LOCAL, "Holy Communion Services - Slides")):
-        print("\n🔍 Checking offline fallback folder...")
-        ensure_onedrive_git_local()
-    
     # Refresh search directories based on current working directory
     global MALAYALAM_SEARCH_DIRS
     MALAYALAM_SEARCH_DIRS = get_search_dirs()
@@ -2147,10 +2027,10 @@ def main():
         output_name = sys.argv[3]
 
     # Pass service_date if it was set from batch file
-    if 'service_date' in locals():
-        generate_presentation(songs, output_name, language, service_date)
+    if 'service_date' in locals() and service_date:
+        generate_presentation(songs, output_name, service_date)
     else:
-        generate_presentation(songs, output_name, )
+        generate_presentation(songs, output_name)
 
 
 if __name__ == "__main__":
