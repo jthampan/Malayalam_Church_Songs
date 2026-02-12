@@ -1,0 +1,43 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Flask stuff
+instance/
+.webassets-cache
+
+# Uploads and generated files
+uploads/*
+generated/*
+
+# Symbolic links (auto-created by start_server.sh)
+modules/extract_english_hymns.py
+modules/extract_malayalam_hymns.py
+modules/generate_malayalam_hcs_ppt.py
+modules/kk_hymn_mapping.json
+modules/kk_hymn_search.py
+images
+onedrive_git_local
+
+# Keep directory structure
+!uploads/.gitkeep
+!generated/.gitkeep
+
+# Environment
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

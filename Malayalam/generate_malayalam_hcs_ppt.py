@@ -1273,8 +1273,8 @@ def clone_slide_exact(src_slide, target_prs, blank_layout):
                 # Wrap blob bytes in BytesIO to provide file-like interface
                 image_stream = BytesIO(source_part.blob)
                 image_part = target_prs.part.package.get_or_add_image_part(image_stream)
-                # Add relationship from slide to the imported image
-                new_slide.part.relate_to(image_part, rel.reltype, rel.rId)
+                # Add relationship from slide to the imported image (without rId to let it auto-generate)
+                new_slide.part.relate_to(image_part, rel.reltype)
             except Exception as e:
                 # Skip relationships we can't copy
                 print(f"    ⚠ Warning: Could not copy image: {e}")

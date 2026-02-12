@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About - Malayalam Church Songs PPT Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>About Church Songs PPT Generator</h1>
+        </header>
+
+        <div class="content">
+            <h2>Purpose</h2>
+            <p>This web application generates PowerPoint presentations for Holy Communion Services in Malayalam and English. It automatically searches for hymns in the church's hymn book and creates professionally formatted slides.</p>
+
+            <h2>Features</h2>
+            <ul>
+                <li>✅ Automatic hymn search from KK hymnal and service archives</li>
+                <li>✅ Generates summary slide with all hymns</li>
+                <li>✅ Holy Communion intro slides with hymn titles</li>
+                <li>✅ Removes headers and decorative elements from KK slides</li>
+                <li>✅ Supports batch file upload or manual entry</li>
+                <li>✅ Customizable service date</li>
+            </ul>
+
+            <h2>How to Use</h2>
+            <ol>
+                <li><strong>Enter Service Date:</strong> Optional, in format "DD Month YYYY"</li>
+                <li><strong>Choose Input Method:</strong>
+                    <ul>
+                        <li>Upload a .txt batch file with your song list</li>
+                        <li>OR manually type songs in the text area</li>
+                    </ul>
+                </li>
+                <li><strong>Click Generate:</strong> The PowerPoint will be created and downloaded automatically</li>
+            </ol>
+
+            <h2>Batch File Format</h2>
+            <p>Each line should contain: <code>HymnNumber|Label|OptionalTitle</code></p>
+            <pre>91|Opening|
+123|Offertory|
+313|Communion|
+456|Closing|</pre>
+
+            <h2>Supported Labels</h2>
+            <ul>
+                <li>Opening - Opening Hymn</li>
+                <li>ThanksGiving - Thanksgiving Prayers (displays as "B/A")</li>
+                <li>Offertory - Offertory Hymn</li>
+                <li>Message - Message Slide (no hymn number)</li>
+                <li>Confession - Confession Hymn</li>
+                <li>Communion - Holy Communion Hymn</li>
+                <li>Closing - Closing Hymn</li>
+                <li>Dedication - Dedication Hymn</li>
+            </ul>
+
+            <h2>Technical Details</h2>
+            <p>This application searches through the church's PowerPoint archives to find the requested hymns. It prioritizes recent service presentations and falls back to the KK hymnal when needed.</p>
+
+            <p>All hymn titles are automatically extracted and displayed in the summary slide and Holy Communion intro slides.</p>
+
+            <div class="back-link">
+                <a href="{{ url_for('index') }}" class="btn-generate">← Back to Generator</a>
+            </div>
+        </div>
+
+        <footer>
+            <p>Mar Thoma Syrian Church, Singapore | 2026</p>
+        </footer>
+    </div>
+</body>
+</html>
