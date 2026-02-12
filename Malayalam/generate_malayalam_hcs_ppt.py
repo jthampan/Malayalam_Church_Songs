@@ -28,6 +28,7 @@ Images are extracted and saved to the 'images/' folder.
 import os
 import sys
 import re
+import json
 from kk_hymn_search import find_hymn_in_kk_pptx
 from copy import deepcopy
 from datetime import datetime
@@ -52,6 +53,13 @@ IMAGES_DIR = os.path.join(PARENT_DIR, "images")
 
 # Create images directory if it doesn't exist
 os.makedirs(IMAGES_DIR, exist_ok=True)
+
+# Load KK hymn mapping
+KK_HYMN_MAPPING = {}
+kk_mapping_path = os.path.join(BASE_DIR, "kk_hymn_mapping.json")
+if os.path.exists(kk_mapping_path):
+    with open(kk_mapping_path, 'r', encoding='utf-8') as f:
+        KK_HYMN_MAPPING = json.load(f)
 
 # Path to bundled/local hymn files folder
 # NOTE: For exe builds, this folder is bundled at BUILD TIME by build_exe.py
@@ -482,6 +490,32 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
             
             title_slide_idx = i
             collecting = True
+            
+            # Extract title from the title slide (find largest Malayalam/Manglish text)
+            max_text = ""
+            for shape in prs.slides[i].shapes:
+                if shape.has_text_frame:
+                    text = shape.text_frame.text.strip()
+                    # Skip footer patterns and slide numbers
+                    if re.search(r'^\d+\s*:\s*\d+\s+of\s+\d+', text):  # Footer like "30 : 31 of 106"
+                        continue
+                    if re.match(r'^\d{1,3}$', text):  # Just a slide number
+                        continue
+                    if 'Hymn' in text and len(text) < 30:  # Skip "Hymn No 313" headers
+                        continue
+                    if any(sec in text for sec in ["Opening", "Confession", "Offertory", "Thanksgiving", "Communion", "Closing"]) and len(text) < 40:
+                        continue
+                    # Check if text has Malayalam or Manglish content
+                    has_malayalam = bool(re.search(r"[\u0D00-\u0D7F]", text))
+                    has_manglish = len([c for c in text if c.isalpha() and c.isascii()]) > 10
+                    if (has_malayalam or has_manglish) and len(text) > len(max_text):
+                        max_text = text
+            if max_text:
+                # Take only the first line as the title, limited to first 3 words
+                first_line = max_text.split('\n')[0].strip()
+                words = first_line.split()
+                extracted_title = ' '.join(words[:3]) if len(words) > 3 else first_line
+            
             # Only add title slide to content if it has lyrics and isn't image-only
             if slide_has_lyrics(all_text) and not is_image_only_slide(slide):
                 content_indices.append(i)
@@ -611,6 +645,33 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
             # This slide belongs to our song - add as content slide
             content_indices.append(i)
 
+    # If no title was extracted from title slide, try to extract from first content slide
+    if not extracted_title and content_indices:
+        first_content_idx = content_indices[0]
+        max_text = ""
+        for shape in prs.slides[first_content_idx].shapes:
+            if shape.has_text_frame:
+                text = shape.text_frame.text.strip()
+                # Skip footer patterns and slide numbers
+                if re.search(r'^\d+\s*:\s*\d+\s+of\s+\d+', text):  # Footer like "30 : 31 of 106"
+                    continue
+                if re.match(r'^\d{1,3}$', text):  # Just a slide number
+                    continue
+                if 'Hymn' in text and len(text) < 30:  # Skip "Hymn No 313" headers
+                    continue
+                if any(sec in text for sec in ["Opening", "Confession", "Offertory", "Thanksgiving", "Communion", "Closing"]) and len(text) < 50:
+                    continue
+                # Check if text has Malayalam or Manglish content
+                has_malayalam = bool(re.search(r"[\u0D00-\u0D7F]", text))
+                has_manglish = len([c for c in text if c.isalpha() and c.isascii()]) > 10
+                if (has_malayalam or has_manglish) and len(text) > len(max_text):
+                    max_text = text
+        if max_text:
+            # Take only the first line as the title, limited to first 3 words
+            first_line = max_text.split('\n')[0].strip()
+            words = first_line.split()
+            extracted_title = ' '.join(words[:3]) if len(words) > 3 else first_line
+
     return title_slide_idx, content_indices, extracted_title
 
 
@@ -672,7 +733,8 @@ def find_best_song_source(hymn_num, song_name):
                     best_count = len(c_indices)
                     best_title_idx = t_idx
                     best_content = c_indices
-                    best_extracted_title = extracted_title
+                    # Use title from kk_hymn_mapping.json instead of extracted title
+                    best_extracted_title = KK_HYMN_MAPPING.get(str(hymn_num), extracted_title)
     
     # Mark these slides as used if we found something
     if best_source and best_content:
@@ -792,8 +854,12 @@ def add_holy_communion_intro_slide(prs, blank_layout, hymn_num, song_name=""):
         sp = shape._element
         sp.getparent().remove(sp)
     
-    # Create the pink title bar like other slides
-    create_title_bar(slide, prs, "Holy Communion")
+    # Create the pink title bar with hymn info
+    if song_name:
+        title_text = f"Holy Communion - {song_name}"
+    else:
+        title_text = f"Holy Communion - Hymn No: {hymn_num}"
+    create_title_bar(slide, prs, title_text)
 
     # Add the Holy Communion image below the title bar
     hc_image_path = resolve_image_path("holy_communion.jpg")
@@ -838,6 +904,9 @@ def clone_slides_from_source(source_pptx_path, slide_indices, target_prs,
     source_slides = list(source_prs.slides)
     added = 0
     
+    # Check if source is a KK hymn file
+    is_kk_file = "KK" in os.path.basename(source_pptx_path).upper() or "Kristeeya" in os.path.basename(source_pptx_path)
+    
     # Build title text for content slides (just Hymn No and Title, no section label)
     if song_name:
         slide_title_text = f"Hymn No {hymn_num} - {song_name}"
@@ -868,6 +937,11 @@ def clone_slides_from_source(source_pptx_path, slide_indices, target_prs,
         
         # Clone the exact slide preserving all formatting
         new_slide = clone_slide_exact(src_slide, target_prs, blank_layout)
+
+        # If this is from a KK hymn file, remove the KK header and decorative shapes
+        if is_kk_file:
+            remove_kk_hymn_header(new_slide)
+            remove_kk_decorative_shapes(new_slide)
 
         # Always remove QR code and UEN from source slides (in case source was from offertory)
         remove_qr_and_uen(new_slide)
@@ -1098,6 +1172,73 @@ def remove_footer_text(slide):
             sp.getparent().remove(sp)
 
 
+def remove_kk_hymn_header(slide):
+    """Remove the KK hymn header/title from the slide (top text with 'Hymn No: X' pattern)."""
+    for shape in list(slide.shapes):
+        if not shape.has_text_frame:
+            continue
+        # Check if shape is at the top of the slide
+        if shape.top > Emu(1000000):  # Not in header area (< 1 inch from top)
+            continue
+        
+        text = shape.text_frame.text.strip()
+        if not text:
+            continue
+        
+        # Check if this looks like a KK hymn header (contains "Hymn No:" or just the hymn number)
+        if re.search(r'Hymn\s*No\s*:?\s*\d+', text, re.IGNORECASE):
+            sp = shape._element
+            sp.getparent().remove(sp)
+            continue
+        
+        # Also remove standalone hymn numbers at the top
+        if re.match(r'^\d{1,3}$', text):
+            sp = shape._element
+            sp.getparent().remove(sp)
+
+
+def remove_kk_decorative_shapes(slide):
+    """Remove decorative shapes from KK slides (checkmarks, arrows, etc)."""
+    slide_width = slide.width if hasattr(slide, 'width') else Emu(9144000)
+    slide_height = slide.height if hasattr(slide, 'height') else Emu(6858000)
+    
+    for shape in list(slide.shapes):
+        # Skip text frames and pictures (actual content)
+        if shape.has_text_frame:
+            continue
+        if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+            continue
+        
+        # Remove shapes that are clearly decorative (not the main content area)
+        # Check if shape is in corners or edges (not center content area)
+        center_x = slide_width // 2
+        center_y = slide_height // 2
+        shape_center_x = shape.left + (shape.width // 2)
+        shape_center_y = shape.top + (shape.height // 2)
+        
+        # If shape center is far from slide center, it's likely decorative
+        # Content is usually in center 60% of slide
+        horizontal_margin = slide_width * 0.2  # 20% margins on each side
+        vertical_margin = slide_height * 0.2
+        
+        is_outside_content = (
+            shape_center_x < horizontal_margin or 
+            shape_center_x > (slide_width - horizontal_margin) or
+            shape_center_y < vertical_margin or
+            shape_center_y > (slide_height - vertical_margin)
+        )
+        
+        # Also remove any shape that's not very large (decorative elements are smaller than content)
+        is_small = shape.width < (slide_width * 0.4) and shape.height < (slide_height * 0.4)
+        
+        if is_outside_content or is_small:
+            try:
+                sp = shape._element
+                sp.getparent().remove(sp)
+            except:
+                pass
+
+
 def clone_slide_exact(src_slide, target_prs, blank_layout):
     """Clone a slide preserving original shapes and formatting."""
     new_slide = target_prs.slides.add_slide(blank_layout)
@@ -1225,7 +1366,7 @@ def process_opening_song(prs, title_layout, blank_layout, hymn_num, song_name, s
     label = "Opening"
     
     # Find the best source (most slides) across all PPT files, prioritizing "Opening" section in KK.pptx
-    best_pf, t_idx, c_indices, extracted_title = find_best_song_source(hymn_num, song_name, label)
+    best_pf, t_idx, c_indices, extracted_title = find_best_song_source(hymn_num, song_name)
     
     if best_pf and c_indices:
         display_title = extracted_title if extracted_title else song_name
@@ -1626,9 +1767,13 @@ def update_summary_slide_from_slides(prs, song_list):
                 fallback_titles[current_hymn] = title_words
                 break
     
-    # Update song_list with extracted titles
+    # Update song_list with extracted titles (only if not already set)
     for song in song_list:
         hymn_num = str(song.get('hymn_num', ''))
+        # Skip if title_hint already exists (was set during processing)
+        if song.get('title_hint'):
+            continue
+        # Try to extract from slides
         if hymn_num in hymn_titles and hymn_titles[hymn_num]:
             song['title_hint'] = hymn_titles[hymn_num]
         elif hymn_num in fallback_titles and fallback_titles[hymn_num]:

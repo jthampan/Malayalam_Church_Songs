@@ -27,9 +27,22 @@ if not os.path.exists('gui_ppt_generator.py'):
     sys.exit(1)
 
 malayalam_script = parent_dir / "Malayalam" / "generate_malayalam_hcs_ppt.py"
+kk_hymn_search = parent_dir / "Malayalam" / "kk_hymn_search.py"
+kk_hymn_mapping = parent_dir / "Malayalam" / "kk_hymn_mapping.json"
+
 if not malayalam_script.exists():
     print(f"❌ ERROR: generate_malayalam_hcs_ppt.py not found at {malayalam_script}!")
     print("   This file is required for the executable to work.")
+    sys.exit(1)
+
+if not kk_hymn_search.exists():
+    print(f"❌ ERROR: kk_hymn_search.py not found at {kk_hymn_search}!")
+    print("   This file is required for KK hymn search functionality.")
+    sys.exit(1)
+
+if not kk_hymn_mapping.exists():
+    print(f"❌ ERROR: kk_hymn_mapping.json not found at {kk_hymn_mapping}!")
+    print("   This file is required for KK hymn mapping.")
     sys.exit(1)
 
 images_dir = parent_dir / "images"
@@ -191,6 +204,8 @@ PyInstaller.__main__.run([
     '--name=Church_Songs_Generator',   # Executable name
     '--icon=NONE',                     # No icon (can add later)
     f'--add-data={malayalam_script};.',  # Include Malayalam generator
+    f'--add-data={kk_hymn_search};.',    # Include KK hymn search
+    f'--add-data={kk_hymn_mapping};.',   # Include KK hymn mapping JSON
     f'--add-data={images_dir};images' if images_dir.exists() else '--',  # Include images folder
     f'--add-data={onedrive_git_local};onedrive_git_local' if onedrive_git_local.exists() else '--',  # Include PPT files
     '--hidden-import=pptx',            # Include python-pptx
@@ -198,6 +213,7 @@ PyInstaller.__main__.run([
     '--hidden-import=pptx.dml.color',  # Include pptx color
     '--hidden-import=pptx.enum.text',  # Include pptx enums
     '--hidden-import=pptx.enum.shapes',# Include pptx shape enums
+    '--hidden-import=kk_hymn_search',  # Include KK hymn search module
     # Exclude UNUSED heavy packages (saves ~100MB and improves startup)
     '--exclude-module=pandas',         # Not used - data analysis
     '--exclude-module=numpy',          # Not used - numerical computing

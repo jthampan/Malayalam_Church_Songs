@@ -815,6 +815,7 @@ class PPTGeneratorGUI:
                 ["taskkill", "/F", "/IM", "POWERPNT.EXE"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0,
                 timeout=5
             )
             self.log("🔓 Closed PowerPoint to release file lock")
