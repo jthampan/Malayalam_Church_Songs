@@ -56,30 +56,40 @@ def find_hymn_in_kk_pptx(pptx_path, hymn_number):
         for shape in slide.shapes:
             if shape.has_text_frame:
                 text = shape.text_frame.text.strip()
+                is_right_corner = hasattr(shape, 'left') and shape.left > right_corner_threshold
                 
-                # Skip shapes on the FAR RIGHT corner (rightmost 15%)
-                if hasattr(shape, 'left') and shape.left > right_corner_threshold:
-                    continue
-                
-                # Check for patterns like "Holy Communion – 143" or "Section - 143"
+                # Pattern 1: Dash followed by optional "Hymn/KK" and number
+                # Matches: "Opening Song – Hymn 40", "Section – 143", "Holy Communion - 143"
                 if '–' in text or '-' in text or '—' in text:
-                    dash_match = re.search(r'[–\-—]\s*(\d+)', text)
+                    dash_match = re.search(r'[–\-—]\s*(?:(?:Hymn|KK)\s*(?:No\.?:?\s*)?)?\s*(\d+)', text, re.IGNORECASE)
                     if dash_match and dash_match.group(1) == target_hymn_num:
                         hymn_match = True
+                        break
                 
-                if hymn_match:
-                    break
-                
-                # Check for standalone number at start/middle (not right end)
-                words = text.split()
-                mid_point = len(words) // 2
-                first_half = words[:mid_point + 1] if mid_point > 0 else words[:1]
-                
-                for word in first_half:
-                    clean_word = word.strip('.,;:!?"\'()[]{}–-')
-                    if clean_word == target_hymn_num or clean_word == f"{target_hymn_num}.":
+                # Pattern 2: "Hymn" or "Hymn No." or "Hymn No:" followed by number (no dash needed)
+                if not hymn_match:
+                    hymn_word_match = re.search(r'Hymn\s*(?:No\.?:?\s*)?(\d+)', text, re.IGNORECASE)
+                    if hymn_word_match and hymn_word_match.group(1) == target_hymn_num:
                         hymn_match = True
                         break
+                
+                # Pattern 3: Standalone number - check left/center first, right corner as fallback
+                if not hymn_match and not is_right_corner:
+                    words = text.split()
+                    mid_point = len(words) // 2
+                    first_half = words[:mid_point + 1] if mid_point > 0 else words[:1]
+                    
+                    for word in first_half:
+                        clean_word = word.strip('.,;:!?"\'()[]{}–-')
+                        if clean_word == target_hymn_num or clean_word == f"{target_hymn_num}.":
+                            hymn_match = True
+                            break
+                
+                # Pattern 4: Standalone number in right corner (as last resort)
+                if not hymn_match and is_right_corner:
+                    clean_text = text.strip('.,;:!?"\'()[]{}–-')
+                    if clean_text == target_hymn_num:
+                        hymn_match = True
                 
                 if hymn_match:
                     break
