@@ -18,7 +18,7 @@ echo ""
 
 # Install dependencies
 echo "📦 Installing dependencies..."
-pip3 install -r requirements.txt --quiet
+pip3 install -r requirements.txt --break-system-packages --quiet
 
 if [ $? -ne 0 ]; then
     echo "❌ Failed to install dependencies"
