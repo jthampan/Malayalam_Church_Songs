@@ -394,10 +394,13 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
     extracted_title = ""
     collecting = False
     
-    # Prepare title search words
+    # Prepare title search words - normalize for flexible matching
     title_words = []
+    normalized_title = ""
     if song_title_hint and len(song_title_hint) > 2:
-        title_words = [w for w in song_title_hint.split()[:3] if len(w) > 2]  # First 3 words, min 3 chars
+        # Normalize: lowercase, remove special chars, keep only alphanumeric and spaces
+        normalized_title = re.sub(r'[^a-z0-9\s]', '', song_title_hint.lower())
+        title_words = [w for w in normalized_title.split() if len(w) > 2]  # Min 3 chars
 
     def slide_has_lyrics(text):
         # For English, check for sufficient text content (lyrics typically have more text)
@@ -429,8 +432,21 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
         return letter_count < 30
 
     def build_hymn_pattern(num):
-        # Pattern: "Hymn No 171" or "Song No 171" or "Song no: 40" or "Song no: (40)" or "Hymn – 171"
-        return r"(?:Hymn|Song)\s*(?:[Nn]o\.?:?\s*)?[-–]?\s*\(?" + re.escape(num) + r"\)?(?:\s|\b)"
+        # More comprehensive pattern to match various hymn number formats
+        # Matches: "Hymn No 171", "Song No. 633", "Hymn – 171", "Song no: 40", "(36)", etc.
+        escaped_num = re.escape(num)
+        patterns = [
+            # Standard formats with "No" or "No."
+            r"(?:Hymn|Song)\s*[Nn]o\.?\s*[\:\-–]?\s*\(?" + escaped_num + r"\)?(?:\s|\b|,)",
+            # Formats with just dash: "Hymn – 171" or "Song – 633"
+            r"(?:Hymn|Song)\s*[-–]\s*" + escaped_num + r"(?:\s|\b|,)",
+            # Formats in context: "Confession – Song No. 633"
+            r"(?:Confession|Offertory|Communion)\s*[-–]\s*(?:Song|Hymn)\s*[Nn]o\.?\s*" + escaped_num + r"(?:\s|\b|,)",
+            # Parentheses format at end of title: "A Christian home (36)"
+            r"\(" + escaped_num + r"\)",
+        ]
+        # Combine all patterns with OR
+        return "(" + "|".join(patterns) + ")"
     
     def find_hymn_in_text(target_num, text):
         """Find hymn number in text using regular service PPT patterns."""
@@ -461,8 +477,10 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
         # Check for song title match (if title provided)
         title_match = False
         if title_words:
+            # Normalize slide text for flexible matching (ignore case, special chars)
+            normalized_slide = re.sub(r'[^a-z0-9\s]', '', all_text.lower())
             # Match if at least 2 title words are found (or 1 if only 1 word provided)
-            matches = sum(1 for word in title_words if word.lower() in all_text.lower())
+            matches = sum(1 for word in title_words if word in normalized_slide)
             title_match = matches >= min(2, len(title_words))
 
         # Determine if this slide is a match
@@ -480,12 +498,21 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
         if is_match and not collecting:
             # Found start of our song - this is the title slide
             # Store the hymn number found on this slide (if any) for tracking
-            hymn_found_on_title = re.search(r"(?:Hymn|Song)\s*(?:[Nn]o\.?:?\s*)?[-–]?\s*\(?(\d+)\)?", all_text, re.IGNORECASE)
-            found_hymn_num = hymn_found_on_title.group(1) if hymn_found_on_title else ""
+            # Use multiple patterns to extract hymn number (including parentheses format)
+            found_hymn_num = ""
+            hymn_patterns = [
+                r"(?:Hymn|Song)\s*(?:[Nn]o\.?:?\s*)?[-–]?\s*\(?(\d+)\)?",
+                r"\((\d+)\)",  # Parentheses format like "(36)"
+            ]
+            for hp in hymn_patterns:
+                hymn_found_on_title = re.search(hp, all_text, re.IGNORECASE)
+                if hymn_found_on_title:
+                    found_hymn_num = hymn_found_on_title.group(1)
+                    break
             
-            # If searching by hymn number only, ensure the title slide actually has that hymn number
+            # If searching by hymn number only, ensure we found the correct hymn number
             if target and not song_title_hint:
-                # Searching by hymn number only - title slide MUST have the hymn number
+                # Searching by hymn number only - verify we found the right number
                 if found_hymn_num != target:
                     # This slide doesn't have our hymn number, skip it
                     continue
@@ -523,30 +550,34 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
                 words = first_line.split()
                 extracted_title = ' '.join(words[:3]) if len(words) > 3 else first_line
             
-            # Don't add title slide to content - we create our own title slide
+            # Check if title slide has lyrics (compact single-slide format)
+            # If it has significant content, add it as a content slide too
+            if slide_has_lyrics(all_text) and not is_image_only_slide(slide):
+                content_indices.append(i)
+            
+            # Don't add title slide again in the collecting loop
             continue
 
         if collecting:
             clean_text = all_text.strip()
             
-            # Early exit for very short slides (likely section dividers)
+            # Skip very short slides (likely section dividers) but don't stop collecting
             if len(clean_text) < 20:
-                break
+                continue
             
             # Check if this is a NEW section (different from where we started)
             # e.g., "Holy Communion - Hymn No 42" when we started at "Confession - Hymn No 42"
+            # BUT: Only stop if this slide doesn't have our hymn number
+            # (same hymn can appear in multiple sections, e.g., Confession and Communion)
             is_different_section = False
             for sec in ["Opening", "Confession", "Offertory", "Thanksgiving", "Communion", "Closing", "Dedication"]:
                 if sec.lower() in all_text.lower() and ("Hymn" in all_text or "Song" in all_text):
                     if found_section and sec.lower() != found_section.lower():
-                        # Different section - stop collecting
+                        # Different section detected
                         is_different_section = True
                         break
             
-            if is_different_section:
-                break
-            
-            # Check if this slide matches our hymn reference
+            # Check if this slide has our hymn number (recompute since we need it here)
             has_our_hymn = False
             if target:
                 hymn_pattern = build_hymn_pattern(target)
@@ -555,9 +586,15 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
                 hymn_pattern = build_hymn_pattern(found_hymn_num)
                 has_our_hymn = bool(re.search(hymn_pattern, all_text, re.IGNORECASE))
             
+            # Only stop for different section if this slide doesn't have our hymn
+            if is_different_section and not has_our_hymn:
+                break
+            
             has_our_title = False
             if title_words:
-                matches = sum(1 for word in title_words if word.lower() in all_text.lower())
+                # Normalize slide text for flexible matching
+                normalized_slide = re.sub(r'[^a-z0-9\s]', '', all_text.lower())
+                matches = sum(1 for word in title_words if word in normalized_slide)
                 has_our_title = matches >= min(2, len(title_words))
             
             # Check if this slide has a DIFFERENT hymn number
@@ -576,7 +613,9 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
                         break
             
             # Use comprehensive title slide detection (visual + text analysis)
-            if is_title_slide(all_text, slide):
+            # But only stop if this slide DOESN'T have our hymn number
+            # (some songs have title-like transition slides that still belong to them)
+            if is_title_slide(all_text, slide) and not has_our_hymn:
                 # This is a title slide for a different song - stop collecting
                 break
             
