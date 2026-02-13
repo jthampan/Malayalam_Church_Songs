@@ -8,9 +8,6 @@ import os
 import sys
 import re
 
-# Import the full generation module
-from generate_malayalam_hcs_ppt import generate_presentation
-
 def parse_batch_file(batch_file_path):
     """
     Parse a batch file and return list of songs
@@ -64,7 +61,7 @@ def parse_batch_file(batch_file_path):
     
     return song_list
 
-def generate_presentation_from_song_list(song_list, output_path, service_date=None):
+def generate_presentation_from_song_list(song_list, output_path, service_date=None, language='Malayalam'):
     """
     Generate PowerPoint presentation from song list
     
@@ -72,11 +69,23 @@ def generate_presentation_from_song_list(song_list, output_path, service_date=No
         song_list: List of song dictionaries with keys: label, hymn_num, title_hint
         output_path: Path where the generated PPTX should be saved
         service_date: Optional service date string (e.g., "16 February 2026")
+        language: 'Malayalam' or 'English' (default: 'Malayalam')
     
     Returns:
         tuple: (success: bool, message: str)
     """
     try:
+        # Import the appropriate generation module based on language
+        if language == 'English':
+            # Add English directory to path
+            english_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'English')
+            if english_dir not in sys.path:
+                sys.path.insert(0, english_dir)
+            from generate_english_hcs_ppt import generate_presentation
+        else:
+            # Default to Malayalam
+            from generate_malayalam_hcs_ppt import generate_presentation
+        
         # Call the main PPT creation function
         generate_presentation(song_list, output_path, service_date)
         return (True, f"Presentation created successfully: {output_path}")
@@ -84,3 +93,4 @@ def generate_presentation_from_song_list(song_list, output_path, service_date=No
         import traceback
         error_msg = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
         return (False, error_msg)
+

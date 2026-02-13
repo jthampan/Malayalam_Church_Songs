@@ -4,13 +4,14 @@ Malayalam Church Songs PPT Generator - Web Application
 Allows users to generate PowerPoint presentations via web browser
 """
 
-from flask import Flask, render_template, request, send_file, flash, redirect, url_for, jsonify
+from flask import Flask, render_template, request, send_file, flash, redirect, url_for, jsonify, session
 import os
 import sys
 from werkzeug.utils import secure_filename
 from datetime import datetime
 import tempfile
 import shutil
+from io import StringIO
 
 # Add modules directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'modules'))
@@ -21,6 +22,9 @@ from ppt_generator import generate_presentation_from_song_list, parse_batch_file
 app = Flask(__name__)
 app.secret_key = 'malayalam-church-songs-secret-key-2026'
 app.config['GENERATED_FOLDER'] = os.path.join(os.path.dirname(__file__), 'generated')
+
+# Store progress logs temporarily
+progress_logs = {}
 
 @app.route('/')
 def index():
@@ -60,21 +64,44 @@ def generate():
         output_filename = f'{language}_HCS_{timestamp}.pptx'
         output_path = os.path.join(app.config['GENERATED_FOLDER'], output_filename)
         
-        # Generate the presentation
-        success, message = generate_presentation_from_song_list(
-            song_list, 
-            output_path, 
-            service_date if service_date else None
-        )
+        # Capture stdout to return progress messages
+        from io import StringIO
+        import sys
+        old_stdout = sys.stdout
+        sys.stdout = captured_output = StringIO()
+        
+        # Generate a unique ID for this generation
+        gen_id = timestamp
+        progress_logs[gen_id] = []
+        
+        try:
+            # Generate the presentation
+            success, message = generate_presentation_from_song_list(
+                song_list, 
+                output_path, 
+                service_date if service_date else None,
+                language=language
+            )
+        finally:
+            # Restore stdout and capture the log
+            sys.stdout = old_stdout
+            progress_log = captured_output.getvalue()
+            progress_logs[gen_id] = progress_log.split('\n')
         
         if success:
-            # Return the file for download
-            return send_file(
+            # Store the log for retrieval
+            response = send_file(
                 output_path,
                 as_attachment=True,
                 download_name=output_filename,
                 mimetype='application/vnd.openxmlformats-officedocument.presentationml.presentation'
             )
+            # Explicitly set Content-Disposition header to force correct filename
+            response.headers['Content-Disposition'] = f'attachment; filename="{output_filename}"'
+            # Add generation ID for log retrieval
+            response.headers['X-Generation-ID'] = gen_id
+            response.headers['X-Has-Log'] = 'true'
+            return response
         else:
             flash(f'Error generating presentation: {message}', 'error')
             return redirect(url_for('index'))
@@ -82,6 +109,13 @@ def generate():
     except Exception as e:
         flash(f'Error: {str(e)}', 'error')
         return redirect(url_for('index'))
+
+@app.route('/get_log/<gen_id>')
+def get_log(gen_id):
+    """Retrieve generation log"""
+    if gen_id in progress_logs:
+        return jsonify({'log': progress_logs[gen_id]})
+    return jsonify({'log': []})
 
 @app.route('/cleanup')
 def cleanup():

@@ -23,7 +23,7 @@
         {% endwith %}
 
         <div class="form-container">
-            <form action="{{ url_for('generate') }}" method="POST" enctype="multipart/form-data">
+            <form id="songForm" action="{{ url_for('generate') }}" method="POST" enctype="multipart/form-data">
                 <div class="language-extract-row">
                     <div class="form-group" style="flex: 1; margin: 0;">
                         <label for="language">Language:</label>
@@ -51,7 +51,23 @@
 
                 <div class="form-group">
                     <h3>Enter Songs:</h3>
-                    <textarea id="songs_text" name="songs_text" rows="15">91|Opening|
+                    <textarea id="songs_text" name="songs_text" rows="8" 
+                              data-malayalam="91|Opening|
+8|ThanksGiving|
+420|Offertory|
+Message
+313|Communion|
+175|Communion|
+119|Communion|
+500|Communion|
+456|Closing|"
+                              data-english="40|Opening|
+306|ThanksGiving|
+473|Offertory|
+Message
+42|Communion|
+805|Communion|
+208|Closing|">91|Opening|
 8|ThanksGiving|
 420|Offertory|
 Message
@@ -67,6 +83,15 @@ Message
                     <button type="submit" class="btn-generate">🎵 Generate PowerPoint</button>
                 </div>
             </form>
+            
+            <!-- Output Console -->
+            <div class="output-console" id="outputConsole">
+                <div class="output-header">
+                    <h3>Generation Output</h3>
+                    <button type="button" class="btn-close-output" onclick="clearOutput()">Clear</button>
+                </div>
+                <pre id="outputText" class="output-text">Ready to generate presentations...</pre>
+            </div>
         </div>
 
         <footer>

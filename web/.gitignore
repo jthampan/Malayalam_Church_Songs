@@ -15,6 +15,7 @@ generated/*
 modules/extract_english_hymns.py
 modules/extract_malayalam_hymns.py
 modules/generate_malayalam_hcs_ppt.py
+modules/generate_english_hcs_ppt.py
 modules/kk_hymn_mapping.json
 modules/kk_hymn_search.py
 images

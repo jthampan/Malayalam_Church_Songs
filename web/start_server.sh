@@ -68,13 +68,15 @@ for file in generate_malayalam_hcs_ppt.py kk_hymn_search.py kk_hymn_mapping.json
     fi
 done
 
-# Link English extraction script
-if [ ! -L "extract_english_hymns.py" ] && [ ! -f "extract_english_hymns.py" ]; then
-    ln -s ../../English/extract_english_hymns.py extract_english_hymns.py
-    echo "✅ Linked modules/extract_english_hymns.py → English/extract_english_hymns.py"
-elif [ -L "extract_english_hymns.py" ]; then
-    echo "✅ modules/extract_english_hymns.py link already exists"
-fi
+# Link English scripts
+for file in extract_english_hymns.py generate_english_hcs_ppt.py; do
+    if [ ! -L "$file" ] && [ ! -f "$file" ]; then
+        ln -s ../../English/"$file" "$file"
+        echo "✅ Linked modules/$file → English/$file"
+    elif [ -L "$file" ]; then
+        echo "✅ modules/$file link already exists"
+    fi
+done
 
 cd ..
 echo ""
