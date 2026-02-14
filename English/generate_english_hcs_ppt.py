@@ -394,13 +394,17 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
     extracted_title = ""
     collecting = False
     
-    # Prepare title search words - normalize for flexible matching
-    title_words = []
-    normalized_title = ""
+    # Prepare title search - normalize and get first 3-4 consecutive words
+    title_search_phrase = ""
     if song_title_hint and len(song_title_hint) > 2:
         # Normalize: lowercase, remove special chars, keep only alphanumeric and spaces
         normalized_title = re.sub(r'[^a-z0-9\s]', '', song_title_hint.lower())
-        title_words = [w for w in normalized_title.split() if len(w) > 2]  # Min 3 chars
+        # Get first 3-4 words (at least 3 chars each) for consecutive matching
+        words = [w for w in normalized_title.split() if len(w) > 2]
+        if words:
+            # Use first 3 or 4 words (whichever gives us more)
+            num_words = min(4, len(words)) if len(words) >= 4 else min(3, len(words))
+            title_search_phrase = ' '.join(words[:num_words])
 
     def slide_has_lyrics(text):
         # For English, check for sufficient text content (lyrics typically have more text)
@@ -458,11 +462,15 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
 
     for i, slide in enumerate(prs.slides):
         all_text = ""
+        first_lines = []  # Collect first line from all text boxes
 
         for shape in slide.shapes:
             if shape.has_text_frame:
                 text = shape.text_frame.text.strip()
                 all_text += " " + text
+                # Capture first line from each text box
+                if text:
+                    first_lines.append(text.split('\n')[0].strip())
 
         # Skip summary/index slides that list multiple hymns
         hymn_count = len(re.findall(r'\b\d{2,3}\b', all_text))
@@ -474,14 +482,15 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
         if target:
             hymn_match = find_hymn_in_text(target, all_text)
         
-        # Check for song title match (if title provided)
+        # Check for song title match (if title provided) - search all first lines
         title_match = False
-        if title_words:
-            # Normalize slide text for flexible matching (ignore case, special chars)
-            normalized_slide = re.sub(r'[^a-z0-9\s]', '', all_text.lower())
-            # Match if at least 2 title words are found (or 1 if only 1 word provided)
-            matches = sum(1 for word in title_words if word in normalized_slide)
-            title_match = matches >= min(2, len(title_words))
+        if title_search_phrase:
+            # Check first line of each text box
+            for first_line in first_lines:
+                normalized_first_line = re.sub(r'[^a-z0-9\s]', '', first_line.lower())
+                if title_search_phrase in normalized_first_line:
+                    title_match = True
+                    break
 
         # Determine if this slide is a match
         is_match = False
@@ -591,11 +600,18 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
                 break
             
             has_our_title = False
-            if title_words:
-                # Normalize slide text for flexible matching
-                normalized_slide = re.sub(r'[^a-z0-9\s]', '', all_text.lower())
-                matches = sum(1 for word in title_words if word in normalized_slide)
-                has_our_title = matches >= min(2, len(title_words))
+            if title_search_phrase:
+                # Check first line of all text boxes
+                slide_first_lines = []
+                for shape in prs.slides[i].shapes:
+                    if shape.has_text_frame and shape.text_frame.text.strip():
+                        slide_first_lines.append(shape.text_frame.text.strip().split('\n')[0].strip())
+                
+                for first_line in slide_first_lines:
+                    normalized_first_line = re.sub(r'[^a-z0-9\s]', '', first_line.lower())
+                    if title_search_phrase in normalized_first_line:
+                        has_our_title = True
+                        break
             
             # Check if this slide has a DIFFERENT hymn number
             check_hymn = target if target else found_hymn_num
@@ -613,11 +629,18 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
                         break
             
             # Use comprehensive title slide detection (visual + text analysis)
-            # But only stop if this slide DOESN'T have our hymn number
-            # (some songs have title-like transition slides that still belong to them)
-            if is_title_slide(all_text, slide) and not has_our_hymn:
-                # This is a title slide for a different song - stop collecting
-                break
+            # Even if slide has our hymn number, check if it's a title-only slide (no lyrics)
+            if is_title_slide(all_text, slide):
+                if not has_our_hymn:
+                    # This is a title slide for a different song - stop collecting
+                    break
+                else:
+                    # Has our hymn number - check if it's a title-only transition slide
+                    # Title-only slides typically have: header + slide number only (< 100 chars total)
+                    # Content slides have: header + slide number + section marker + lyrics (> 100 chars)
+                    if len(all_text.strip()) < 100:
+                        # This is a title-only transition slide - skip but continue
+                        continue
             
             # Skip image-only slides (e.g., Holy Communion intro images with no lyrics)
             if is_image_only_slide(slide):
@@ -1384,9 +1407,44 @@ def process_offertory(prs, title_layout, blank_layout, hymn_num, song_name, slid
         slide_counter += num_added
         return slide_counter, display_title
     
-    print(f"  ⚠ Song not found - adding title slide only")
-    add_title_slide(prs, title_layout, label, hymn_num, song_name if song_name else "(Song not found)", TEMPLATE_REFERENCE_PRS, service_date, show_box=True)
-    return slide_counter + 1, song_name
+    # Song not found - add title slide and QR code content slide
+    print(f"  ⚠ Song not found - adding title slide with QR code")
+    display_title = song_name if song_name else "(Song not found)"
+    add_title_slide(prs, title_layout, label, hymn_num, display_title, TEMPLATE_REFERENCE_PRS, service_date, show_box=True)
+    slide_counter += 1
+    
+    # Add a content slide with QR code
+    content_slide = prs.slides.add_slide(blank_layout)
+    
+    # Remove any placeholder text boxes (like "Click to add title")
+    shapes_to_remove = []
+    for shape in content_slide.shapes:
+        if shape.is_placeholder:
+            shapes_to_remove.append(shape)
+    for shape in shapes_to_remove:
+        sp = shape.element
+        sp.getparent().remove(sp)
+    
+    # Create title bar using the standard function
+    title_text = f"{label}: Hymn No {hymn_num}" if hymn_num else label
+    create_title_bar(content_slide, prs, title_text)
+    
+    # Add QR code on the right side if available
+    qr_code_path = None
+    potential_path = os.path.join(IMAGES_DIR, "qr_code.png")
+    if os.path.exists(potential_path):
+        qr_code_path = potential_path
+    
+    if qr_code_path:
+        # QR code position (right side of slide)
+        qr_left = Inches(6.97)
+        qr_top = Inches(1.08)
+        qr_width = Inches(3.04)
+        qr_height = Inches(3.13)
+        add_qr_code_to_slide(content_slide, qr_code_path, qr_left, qr_top, qr_width, qr_height)
+    
+    slide_counter += 1
+    return slide_counter, display_title
 
 
 def process_message(prs, title_layout, slide_counter, service_date=None):
