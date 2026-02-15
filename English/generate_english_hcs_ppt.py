@@ -394,12 +394,40 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
     extracted_title = ""
     collecting = False
     
-    # Prepare title search - normalize and get first 3-4 consecutive words
+    # Prepare title search - aggressive normalization for better matching
+    def normalize_title_for_search(title):
+        """Normalize title for comparison - remove all special chars, prefixes, etc."""
+        if not title:
+            return ""
+        
+        # Lowercase
+        normalized = title.lower()
+        
+        # Remove common prefixes
+        normalized = re.sub(r'^song\s*[:\.]\s*', '', normalized)
+        normalized = re.sub(r'^hymn\s*[:\.]\s*', '', normalized)
+        normalized = re.sub(r'^song\.?no\.?\s*\d*\s*', '', normalized)
+        normalized = re.sub(r'^hymn\.?no\.?\s*\d*\s*', '', normalized)
+        
+        # Remove leading dashes and special characters
+        normalized = re.sub(r'^[–\-—•]\s*', '', normalized)
+        
+        # Remove version markers like "v1", "v2", "(chorus)"
+        normalized = re.sub(r'\s+v\d+\s*$', '', normalized)
+        normalized = re.sub(r'\s*\(?\s*chorus\s*\)?\s*$', '', normalized, flags=re.IGNORECASE)
+        
+        # Remove all special characters except spaces
+        normalized = re.sub(r'[^a-z0-9\s]', '', normalized)
+        
+        # Remove extra whitespace
+        normalized = re.sub(r'\s+', ' ', normalized).strip()
+        
+        return normalized
+    
     title_search_phrase = ""
     if song_title_hint and len(song_title_hint) > 2:
-        # Normalize: lowercase, remove special chars, keep only alphanumeric and spaces
-        normalized_title = re.sub(r'[^a-z0-9\s]', '', song_title_hint.lower())
-        # Get first 3-4 words for consecutive matching (keep ALL words including short ones like "o", "of", "in")
+        normalized_title = normalize_title_for_search(song_title_hint)
+        # Get first 3-4 words for consecutive matching
         words = normalized_title.split()
         if words:
             # Use first 3 or 4 words (whichever gives us more)
@@ -485,12 +513,18 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
         # Check for song title match (if title provided) - search all first lines
         title_match = False
         if title_search_phrase:
-            # Check first line of each text box
+            # Check first line of each text box using aggressive normalization
             for first_line in first_lines:
-                normalized_first_line = re.sub(r'[^a-z0-9\s]', '', first_line.lower())
+                normalized_first_line = normalize_title_for_search(first_line)
                 if title_search_phrase in normalized_first_line:
                     title_match = True
                     break
+            
+            # Also check in full text if not found in first lines
+            if not title_match:
+                normalized_all_text = normalize_title_for_search(all_text)
+                if title_search_phrase in normalized_all_text:
+                    title_match = True
 
         # Determine if this slide is a match
         is_match = False
@@ -612,17 +646,23 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
             
             has_our_title = False
             if title_search_phrase:
-                # Check first line of all text boxes
+                # Check first line of all text boxes using aggressive normalization
                 slide_first_lines = []
                 for shape in prs.slides[i].shapes:
                     if shape.has_text_frame and shape.text_frame.text.strip():
                         slide_first_lines.append(shape.text_frame.text.strip().split('\n')[0].strip())
                 
                 for first_line in slide_first_lines:
-                    normalized_first_line = re.sub(r'[^a-z0-9\s]', '', first_line.lower())
+                    normalized_first_line = normalize_title_for_search(first_line)
                     if title_search_phrase in normalized_first_line:
                         has_our_title = True
                         break
+                
+                # Also check in full slide text if not found
+                if not has_our_title:
+                    normalized_slide_text = normalize_title_for_search(all_text)
+                    if title_search_phrase in normalized_slide_text:
+                        has_our_title = True
             
             # Check if this slide has a DIFFERENT hymn number
             check_hymn = target if target else found_hymn_num
