@@ -399,8 +399,8 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
     if song_title_hint and len(song_title_hint) > 2:
         # Normalize: lowercase, remove special chars, keep only alphanumeric and spaces
         normalized_title = re.sub(r'[^a-z0-9\s]', '', song_title_hint.lower())
-        # Get first 3-4 words (at least 3 chars each) for consecutive matching
-        words = [w for w in normalized_title.split() if len(w) > 2]
+        # Get first 3-4 words for consecutive matching (keep ALL words including short ones like "o", "of", "in")
+        words = normalized_title.split()
         if words:
             # Use first 3 or 4 words (whichever gives us more)
             num_words = min(4, len(words)) if len(words) >= 4 else min(3, len(words))
@@ -554,10 +554,10 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
                     if has_english and len(text) > len(max_text):
                         max_text = text
             if max_text:
-                # Take only the first line as the title, limited to first 3 words
+                # Take only the first line as the title
                 first_line = max_text.split('\n')[0].strip()
-                words = first_line.split()
-                extracted_title = ' '.join(words[:3]) if len(words) > 3 else first_line
+                # Limit length to 60 chars for display purposes
+                extracted_title = first_line if len(first_line) < 60 else first_line[:57] + "..."
             
             # Check if title slide has lyrics (compact single-slide format)
             # If it has significant content, add it as a content slide too
@@ -580,11 +580,22 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
             # (same hymn can appear in multiple sections, e.g., Confession and Communion)
             is_different_section = False
             for sec in ["Opening", "Confession", "Offertory", "Thanksgiving", "Communion", "Closing", "Dedication"]:
-                if sec.lower() in all_text.lower() and ("Hymn" in all_text or "Song" in all_text):
-                    if found_section and sec.lower() != found_section.lower():
-                        # Different section detected
-                        is_different_section = True
-                        break
+                # Check if this slide is a title slide for a different section
+                # Title slides typically have section name + optional "Hymn"/"Song"/"Prayers"
+                sec_lower = sec.lower()
+                text_lower = all_text.lower()
+                if sec_lower in text_lower:
+                    # Found a section name - check if it's a title slide for that section
+                    # Title slide patterns: "Opening Hymn", "Thanksgiving Prayers", "Offertory", etc.
+                    # Also check if slide is short (< 150 chars) which indicates title slide
+                    if found_section and sec_lower != found_section.lower():
+                        # Different section detected - check if it's likely a title slide
+                        has_section_keyword = any(keyword in text_lower for keyword in ["hymn", "song", "prayers", "message"])
+                        is_short = len(clean_text) < 150
+                        if has_section_keyword or is_short:
+                            # Different section detected
+                            is_different_section = True
+                            break
             
             # Check if this slide has our hymn number (recompute since we need it here)
             has_our_hymn = False
@@ -631,16 +642,18 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
             # Use comprehensive title slide detection (visual + text analysis)
             # Even if slide has our hymn number, check if it's a title-only slide (no lyrics)
             if is_title_slide(all_text, slide):
-                if not has_our_hymn:
+                if not has_our_hymn and not has_our_title:
                     # This is a title slide for a different song - stop collecting
                     break
                 else:
-                    # Has our hymn number - check if it's a title-only transition slide
-                    # Title-only slides typically have: header + slide number only (< 100 chars total)
-                    # Content slides have: header + slide number + section marker + lyrics (> 100 chars)
-                    if len(all_text.strip()) < 100:
-                        # This is a title-only transition slide - skip but continue
-                        continue
+                    # Has our hymn number or title - this is our title slide
+                    # Skip it (don't add to content), but continue collecting lyrics slides
+                    # Exception: If we already have content slides, this might be a transition slide for next section
+                    if content_indices:
+                        # We already collected some content - this new title slide means we're done
+                        break
+                    # First title slide for our song - skip it and continue to get content
+                    continue
             
             # Skip image-only slides (e.g., Holy Communion intro images with no lyrics)
             if is_image_only_slide(slide):
@@ -791,6 +804,51 @@ def add_header_footer_to_title_slide(slide, prs, service_date=""):
 # ═══════════════════════════════════════════════════════════════════════════════
 # SLIDE CREATION FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════════
+
+def build_section_title(section_label, song_title, max_length=80):
+    """
+    Build a section title, avoiding duplication if the song title already contains the section name.
+    
+    Args:
+        section_label: Section name like "Opening", "Holy Communion", "Offertory", etc.
+        song_title: The song title (may already contain section prefix)
+        max_length: Maximum length for the final title (default 80 chars)
+        
+    Returns:
+        Final title string with section label, avoiding duplication
+        
+    Examples:
+        build_section_title("Opening", "A mighty fortress") 
+        -> "Opening - A mighty fortress"
+        
+        build_section_title("Holy Communion", "Holy Communion – My God and is Thy table spread")
+        -> "Holy Communion – My God and is Thy table spread" (no duplication)
+        
+        build_section_title("Offertory", "Offertory: Praise God from whom")
+        -> "Offertory: Praise God from whom" (no duplication)
+    """
+    if not song_title:
+        return section_label
+    
+    # Check if song_title already starts with the section label (case-insensitive)
+    # Handle variations: "Opening:", "Opening -", "Opening –", "Opening Hymn"
+    song_lower = song_title.lower().strip()
+    label_lower = section_label.lower().strip()
+    
+    # Check if title starts with the section label
+    if song_lower.startswith(label_lower):
+        # Already has the section label, use as-is
+        final_title = song_title
+    else:
+        # Add section label
+        final_title = f"{section_label} - {song_title}"
+    
+    # Limit length
+    if len(final_title) > max_length:
+        final_title = final_title[:max_length - 3] + "..."
+    
+    return final_title
+
 
 def create_title_bar(slide, prs, title_text):
     """Create the title bar at the top of a content slide."""
@@ -1102,7 +1160,8 @@ def add_holy_communion_intro_slide(prs, blank_layout, hymn_num, song_name=""):
     if hymn_num:
         title_text = f"Holy Communion - Hymn No {hymn_num}"
     elif song_name:
-        title_text = f"Holy Communion - {song_name}"
+        # Use generic helper to avoid duplication with section label
+        title_text = build_section_title("Holy Communion", song_name, max_length=80)
     else:
         title_text = "Holy Communion"
     create_title_bar(slide, prs, title_text)
@@ -1292,8 +1351,10 @@ def update_title_bar_text(slide, label, hymn_num, song_name=""):
             continue
         
         text = shape.text_frame.text.strip()
-        # Check if this is a title bar (contains "Hymn" or section name)
-        if "Hymn" not in text and "Song" not in text and "Offertory" not in text and "Opening" not in text and "Confession" not in text and "Communion" not in text and "Closing" not in text and "ThanksGiving" not in text:
+        text_lower = text.lower()
+        # Check if this is a title bar (contains "Hymn", "Song", or section name) - case insensitive
+        section_keywords = ["hymn", "song", "offertory", "opening", "confession", "communion", "closing", "thanksgiving", "dedication"]
+        if not any(keyword in text_lower for keyword in section_keywords):
             continue
         
         try:
@@ -1349,7 +1410,7 @@ def process_opening_song(prs, title_layout, blank_layout, hymn_num, song_name, s
     best_pf, t_idx, c_indices, extracted_title = find_best_song_source(hymn_num, song_name)
     
     if best_pf and c_indices:
-        display_title = extracted_title if extracted_title else song_name
+        display_title = song_name if song_name else extracted_title
         print(f"  ✓ Found in PPT: {os.path.basename(best_pf)} ({len(c_indices)} content slides)")
         add_title_slide(prs, title_layout, label, hymn_num, display_title, TEMPLATE_REFERENCE_PRS, service_date)
         slide_counter += 1
@@ -1373,7 +1434,7 @@ def process_thanksgiving_prayers(prs, title_layout, blank_layout, hymn_num, song
     best_pf, t_idx, c_indices, extracted_title = find_best_song_source(hymn_num, song_name)
     
     if best_pf and c_indices:
-        display_title = extracted_title if extracted_title else song_name
+        display_title = song_name if song_name else extracted_title
         print(f"  ✓ Found in PPT: {os.path.basename(best_pf)} ({len(c_indices)} content slides)")
         add_title_slide(prs, title_layout, label, hymn_num, display_title, TEMPLATE_REFERENCE_PRS, service_date, show_box=True)
         slide_counter += 1
@@ -1396,7 +1457,7 @@ def process_offertory(prs, title_layout, blank_layout, hymn_num, song_name, slid
     best_pf, t_idx, c_indices, extracted_title = find_best_song_source(hymn_num, song_name)
     
     if best_pf and c_indices:
-        display_title = extracted_title if extracted_title else song_name
+        display_title = song_name if song_name else extracted_title
         print(f"  ✓ Found in PPT: {os.path.basename(best_pf)} ({len(c_indices)} content slides)")
         add_title_slide(prs, title_layout, label, hymn_num, display_title, TEMPLATE_REFERENCE_PRS, service_date, show_box=True)
         slide_counter += 1
@@ -1461,7 +1522,7 @@ def process_confession(prs, title_layout, blank_layout, hymn_num, song_name, sli
     best_pf, t_idx, c_indices, extracted_title = find_best_song_source(hymn_num, song_name)
     
     if best_pf and c_indices:
-        display_title = extracted_title if extracted_title else song_name
+        display_title = song_name if song_name else extracted_title
         print(f"  ✓ Found in PPT: {os.path.basename(best_pf)} ({len(c_indices)} content slides)")
         add_title_slide(prs, title_layout, label, hymn_num, display_title, TEMPLATE_REFERENCE_PRS, service_date, show_box=True)
         slide_counter += 1
@@ -1487,7 +1548,8 @@ def process_holy_communion(prs, title_layout, blank_layout, hymn_num, song_name,
     best_pf, t_idx, c_indices, extracted_title = find_best_song_source(hymn_num, song_name)
     
     if best_pf and c_indices:
-        display_title = extracted_title if extracted_title else song_name
+        # Prioritize search name over extracted title (user's input is preferred)
+        display_title = song_name if song_name else extracted_title
         print(f"  ✓ Found in PPT: {os.path.basename(best_pf)} ({len(c_indices)} content slides)")
         
         # Add Holy Communion intro slide with image
@@ -1513,7 +1575,7 @@ def process_closing_hymn(prs, title_layout, blank_layout, hymn_num, song_name, s
     best_pf, t_idx, c_indices, extracted_title = find_best_song_source(hymn_num, song_name)
     
     if best_pf and c_indices:
-        display_title = extracted_title if extracted_title else song_name
+        display_title = song_name if song_name else extracted_title
         print(f"  ✓ Found in PPT: {os.path.basename(best_pf)} ({len(c_indices)} content slides)")
         add_title_slide(prs, title_layout, label, hymn_num, display_title, TEMPLATE_REFERENCE_PRS, service_date, show_box=True)
         slide_counter += 1
