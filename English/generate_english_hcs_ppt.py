@@ -181,25 +181,19 @@ def ensure_holy_communion_image():
 # PPT SEARCH FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def get_search_dirs(language="English"):
+def get_english_search_dirs():
     """
-    Get search directories based on current working directory and language.
+    Get English search directories based on current working directory.
     
     Search logic:
-    1. If user provides a path (cwd != BASE_DIR), search for language-specific folder there
+    1. If user provides a path (cwd != BASE_DIR), search for English HCS folder there
     2. Always include onedrive_git_local as fallback
-    
-    Args:
-        language: "Malayalam" or "English" - determines which HCS folder to look for
     """
     # Use current working directory as base (set by GUI or default to script location)
     cwd = os.getcwd()
     
-    # Determine language folder name
-    if language.lower() == "english":
-        lang_folder = "English HCS"
-    else:
-        lang_folder = "Malayalam HCS"
+    # English HCS folder name
+    lang_folder = "English HCS"
     
     search_dirs = []
     
@@ -253,8 +247,8 @@ def get_search_dirs(language="English"):
     return search_dirs
 
 
-# Initialize with default English directories
-ENGLISH_SEARCH_DIRS = get_search_dirs("English")
+# Search directories (refreshed at start of generate_presentation)
+ENGLISH_SEARCH_DIRS = []
 
 def find_all_pptx_files(search_dirs):
     """Recursively find all .pptx files in English directories."""
@@ -268,6 +262,154 @@ def find_all_pptx_files(search_dirs):
                 if f.endswith(".pptx") and not f.startswith("~$"):
                     pptx_files.append(os.path.join(root, f))
     return pptx_files
+
+
+def normalize_title_for_search(title):
+    """Normalize title for comparison - remove all special chars, prefixes, etc."""
+    if not title:
+        return ""
+    
+    # Lowercase
+    normalized = title.lower()
+    
+    # Remove common prefixes
+    normalized = re.sub(r'^song\s*[:\.\s]*', '', normalized)
+    normalized = re.sub(r'^hymn\s*[:\.\s]*', '', normalized)
+    normalized = re.sub(r'^song\.?no\.?\s*\d*\s*', '', normalized)
+    normalized = re.sub(r'^hymn\.?no\.?\s*\d*\s*', '', normalized)
+    
+    # Remove leading dashes and special characters
+    normalized = re.sub(r'^[–\-—•]\s*', '', normalized)
+    
+    # Remove version markers like "v1", "v2", "(chorus)"
+    normalized = re.sub(r'\s+v\d+\s*$', '', normalized)
+    normalized = re.sub(r'\s*\(?\s*chorus\s*\)?\s*$', '', normalized, flags=re.IGNORECASE)
+    
+    # Remove all special characters except spaces
+    normalized = re.sub(r'[^a-z0-9\s]', '', normalized)
+    
+    # Remove extra whitespace
+    normalized = re.sub(r'\s+', ' ', normalized).strip()
+    
+    return normalized
+
+
+def build_hymn_pattern(num):
+    """Build regex pattern to match various hymn number formats."""
+    escaped_num = re.escape(num)
+    patterns = [
+        # Standard formats with "No" or "No."
+        r"(?:Hymn|Song)\s*[Nn]o\.?\s*[\:\-–]?\s*\(?" + escaped_num + r"\)?(?:\s|\b|,)",
+        # Formats with just dash: "Hymn – 171" or "Song – 633"
+        r"(?:Hymn|Song)\s*[-–]\s*" + escaped_num + r"(?:\s|\b|,)",
+        # Formats in context: "Confession – Song No. 633"
+        r"(?:Confession|Offertory|Communion)\s*[-–]\s*(?:Song|Hymn)\s*[Nn]o\.?\s*" + escaped_num + r"(?:\s|\b|,)",
+        # Parentheses format at end of title: "A Christian home (36)"
+        r"\(" + escaped_num + r"\)",
+    ]
+    return "(" + "|".join(patterns) + ")"
+
+
+def find_hymn_in_text(target_num, text):
+    """Find hymn number in text using regular service PPT patterns."""
+    if not target_num:
+        return False
+    hymn_pattern = build_hymn_pattern(target_num)
+    return bool(re.search(hymn_pattern, text, re.IGNORECASE))
+
+
+def slide_has_lyrics(text):
+    """Check if slide has sufficient text content (lyrics typically have more text)."""
+    ascii_letters = sum(1 for c in text if c.isalpha() and c.isascii())
+    return ascii_letters >= 30
+
+
+def is_image_only_slide(slide):
+    """Check if slide is primarily just an image without meaningful text content."""
+    # Count text content
+    total_text = ""
+    for shape in slide.shapes:
+        if shape.has_text_frame:
+            total_text += shape.text_frame.text.strip()
+    
+    # Remove common labels like title bar text
+    meaningful_text = total_text
+    for label in ["Holy Communion Hymn", "Opening Hymn", "Thanksgiving", "Confession", 
+                  "Closing Hymn", "Offertory", "Communion"]:
+        meaningful_text = meaningful_text.replace(label, "")
+    
+    # Remove slide numbers like "30", "31"
+    meaningful_text = re.sub(r'\b\d{1,3}\b', '', meaningful_text)
+    meaningful_text = re.sub(r'\d+\s*:\s*\d+\s+of\s+\d+', '', meaningful_text)  # Footer
+    
+    # Count actual text content (letters)
+    letter_count = sum(1 for c in meaningful_text if c.isalpha())
+    
+    # If less than 30 letters of actual content, it's likely just an image slide
+    return letter_count < 30
+
+
+def extract_title_from_slide(slide):
+    """Extract song title from a slide (finds largest English text)."""
+    max_text = ""
+    for shape in slide.shapes:
+        if shape.has_text_frame:
+            text = shape.text_frame.text.strip()
+            # Skip footer patterns and slide numbers
+            if re.search(r'^\d+\s*:\s*\d+\s+of\s+\d+', text):  # Footer like "30 : 31 of 106"
+                continue
+            if re.match(r'^\d{1,3}$', text):  # Just a slide number
+                continue
+            if any(kw in text for kw in ['Hymn', 'Song']) and len(text) < 30:  # Skip "Hymn No 313" headers
+                continue
+            if any(sec in text for sec in ["Opening", "Confession", "Offertory", "Thanksgiving", "Communion", "Closing"]) and len(text) < 40:
+                continue
+            # Check if text has English content
+            has_english = len([c for c in text if c.isalpha() and c.isascii()]) > 10
+            if has_english and len(text) > len(max_text):
+                max_text = text
+    
+    if max_text:
+        # Take only the first line as the title
+        first_line = max_text.split('\n')[0].strip()
+        # Limit length to 60 chars for display purposes
+        return first_line if len(first_line) < 60 else first_line[:57] + "..."
+    return ""
+
+
+def remove_placeholders(slide):
+    """Remove all placeholder shapes from a slide."""
+    shapes_to_remove = []
+    for shape in slide.shapes:
+        if shape.is_placeholder:
+            shapes_to_remove.append(shape)
+    
+    for shape in shapes_to_remove:
+        sp = shape._element
+        sp.getparent().remove(sp)
+
+
+def add_text_shadow(run):
+    """Add text shadow to a run using XML formatting."""
+    try:
+        from pptx.oxml.xmlchemy import OxmlElement
+        rPr = run._r.get_or_add_rPr()
+        shadow = OxmlElement('a:effectLst')
+        outerShdw = OxmlElement('a:outerShdw')
+        outerShdw.set('blurRad', '38100')  # Shadow blur radius
+        outerShdw.set('dist', '38100')     # Shadow distance
+        outerShdw.set('dir', '2700000')    # Shadow direction (bottom)
+        outerShdw.set('algn', 'ctr')       # Alignment
+        srgbClr = OxmlElement('a:srgbClr')
+        srgbClr.set('val', '000000')       # Black shadow
+        alpha = OxmlElement('a:alpha')
+        alpha.set('val', '40000')          # 40% opacity
+        srgbClr.append(alpha)
+        outerShdw.append(srgbClr)
+        shadow.append(outerShdw)
+        rPr.append(shadow)
+    except Exception:
+        pass  # Shadow not critical
 
 
 def is_title_slide(all_text, slide=None):
@@ -395,35 +537,6 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
     collecting = False
     
     # Prepare title search - aggressive normalization for better matching
-    def normalize_title_for_search(title):
-        """Normalize title for comparison - remove all special chars, prefixes, etc."""
-        if not title:
-            return ""
-        
-        # Lowercase
-        normalized = title.lower()
-        
-        # Remove common prefixes
-        normalized = re.sub(r'^song\s*[:\.]\s*', '', normalized)
-        normalized = re.sub(r'^hymn\s*[:\.]\s*', '', normalized)
-        normalized = re.sub(r'^song\.?no\.?\s*\d*\s*', '', normalized)
-        normalized = re.sub(r'^hymn\.?no\.?\s*\d*\s*', '', normalized)
-        
-        # Remove leading dashes and special characters
-        normalized = re.sub(r'^[–\-—•]\s*', '', normalized)
-        
-        # Remove version markers like "v1", "v2", "(chorus)"
-        normalized = re.sub(r'\s+v\d+\s*$', '', normalized)
-        normalized = re.sub(r'\s*\(?\s*chorus\s*\)?\s*$', '', normalized, flags=re.IGNORECASE)
-        
-        # Remove all special characters except spaces
-        normalized = re.sub(r'[^a-z0-9\s]', '', normalized)
-        
-        # Remove extra whitespace
-        normalized = re.sub(r'\s+', ' ', normalized).strip()
-        
-        return normalized
-    
     title_search_phrase = ""
     if song_title_hint and len(song_title_hint) > 2:
         normalized_title = normalize_title_for_search(song_title_hint)
@@ -433,60 +546,6 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
             # Use first 3 or 4 words (whichever gives us more)
             num_words = min(4, len(words)) if len(words) >= 4 else min(3, len(words))
             title_search_phrase = ' '.join(words[:num_words])
-
-    def slide_has_lyrics(text):
-        # For English, check for sufficient text content (lyrics typically have more text)
-        ascii_letters = sum(1 for c in text if c.isalpha() and c.isascii())
-        return ascii_letters >= 30
-    
-    def is_image_only_slide(slide):
-        """Check if slide is primarily just an image without meaningful text content."""
-        # Count text content
-        total_text = ""
-        for shape in slide.shapes:
-            if shape.has_text_frame:
-                total_text += shape.text_frame.text.strip()
-        
-        # Remove common labels like title bar text
-        meaningful_text = total_text
-        for label in ["Holy Communion Hymn", "Opening Hymn", "Thanksgiving", "Confession", 
-                      "Closing Hymn", "Offertory", "Communion"]:
-            meaningful_text = meaningful_text.replace(label, "")
-        
-        # Remove slide numbers like "30", "31"
-        meaningful_text = re.sub(r'\b\d{1,3}\b', '', meaningful_text)
-        meaningful_text = re.sub(r'\d+\s*:\s*\d+\s+of\s+\d+', '', meaningful_text)  # Footer
-        
-        # Count actual text content (letters)
-        letter_count = sum(1 for c in meaningful_text if c.isalpha())
-        
-        # If less than 30 letters of actual content, it's likely just an image slide
-        return letter_count < 30
-
-    def build_hymn_pattern(num):
-        # More comprehensive pattern to match various hymn number formats
-        # Matches: "Hymn No 171", "Song No. 633", "Hymn – 171", "Song no: 40", "(36)", etc.
-        escaped_num = re.escape(num)
-        patterns = [
-            # Standard formats with "No" or "No."
-            r"(?:Hymn|Song)\s*[Nn]o\.?\s*[\:\-–]?\s*\(?" + escaped_num + r"\)?(?:\s|\b|,)",
-            # Formats with just dash: "Hymn – 171" or "Song – 633"
-            r"(?:Hymn|Song)\s*[-–]\s*" + escaped_num + r"(?:\s|\b|,)",
-            # Formats in context: "Confession – Song No. 633"
-            r"(?:Confession|Offertory|Communion)\s*[-–]\s*(?:Song|Hymn)\s*[Nn]o\.?\s*" + escaped_num + r"(?:\s|\b|,)",
-            # Parentheses format at end of title: "A Christian home (36)"
-            r"\(" + escaped_num + r"\)",
-        ]
-        # Combine all patterns with OR
-        return "(" + "|".join(patterns) + ")"
-    
-    def find_hymn_in_text(target_num, text):
-        """Find hymn number in text using regular service PPT patterns."""
-        if not target_num:
-            return False
-        
-        hymn_pattern = build_hymn_pattern(target_num)
-        return bool(re.search(hymn_pattern, text, re.IGNORECASE))
 
     for i, slide in enumerate(prs.slides):
         all_text = ""
@@ -569,29 +628,8 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
             title_slide_idx = i
             collecting = True
             
-            # Extract title from the title slide (find largest English text)
-            max_text = ""
-            for shape in prs.slides[i].shapes:
-                if shape.has_text_frame:
-                    text = shape.text_frame.text.strip()
-                    # Skip footer patterns and slide numbers
-                    if re.search(r'^\d+\s*:\s*\d+\s+of\s+\d+', text):  # Footer like "30 : 31 of 106"
-                        continue
-                    if re.match(r'^\d{1,3}$', text):  # Just a slide number
-                        continue
-                    if any(kw in text for kw in ['Hymn', 'Song']) and len(text) < 30:  # Skip "Hymn No 313" headers
-                        continue
-                    if any(sec in text for sec in ["Opening", "Confession", "Offertory", "Thanksgiving", "Communion", "Closing"]) and len(text) < 40:
-                        continue
-                    # Check if text has English content
-                    has_english = len([c for c in text if c.isalpha() and c.isascii()]) > 10
-                    if has_english and len(text) > len(max_text):
-                        max_text = text
-            if max_text:
-                # Take only the first line as the title
-                first_line = max_text.split('\n')[0].strip()
-                # Limit length to 60 chars for display purposes
-                extracted_title = first_line if len(first_line) < 60 else first_line[:57] + "..."
+            # Extract title from the title slide using helper
+            extracted_title = extract_title_from_slide(prs.slides[i])
             
             # Check if title slide has lyrics (compact single-slide format)
             # If it has significant content, add it as a content slide too
@@ -705,59 +743,17 @@ def find_song_slide_indices_in_pptx(pptx_path, target_hymn_num="", song_title_hi
     # If no title was extracted from title slide, try to extract from first content slide
     if not extracted_title and content_indices:
         first_content_idx = content_indices[0]
-        max_text = ""
-        for shape in prs.slides[first_content_idx].shapes:
-            if shape.has_text_frame:
-                text = shape.text_frame.text.strip()
-                # Skip footer patterns and slide numbers
-                if re.search(r'^\d+\s*:\s*\d+\s+of\s+\d+', text):  # Footer like "30 : 31 of 106"
-                    continue
-                if re.match(r'^\d{1,3}$', text):  # Just a slide number
-                    continue
-                if any(kw in text for kw in ['Hymn', 'Song']) and len(text) < 30:  # Skip "Hymn No 313" headers
-                    continue
-                if any(sec in text for sec in ["Opening", "Confession", "Offertory", "Thanksgiving", "Communion", "Closing"]) and len(text) < 50:
-                    continue
-                # Check if text has English content
-                has_english = len([c for c in text if c.isalpha() and c.isascii()]) > 10
-                if has_english and len(text) > len(max_text):
-                    max_text = text
-        if max_text:
-            # Take only the first line as the title
-            first_line = max_text.split('\n')[0].strip()
-            # Remove any leading punctuation or special chars
-            first_line = re.sub(r'^[^\w\s]+', '', first_line)
-            extracted_title = first_line if len(first_line) < 60 else first_line[:57] + "..."
+        extracted_title = extract_title_from_slide(prs.slides[first_content_idx])
     
     # If still no title, try to get from the slide BEFORE the first content slide (the title slide)
-    if not extracted_title and title_slide_idx is not None and content_indices:
-        # The title slide might have the song title in a different shape
-        for shape in prs.slides[title_slide_idx].shapes:
-            if shape.has_text_frame:
-                text = shape.text_frame.text.strip()
-                # Skip very short text
-                if len(text) < 10:
-                    continue
-                # Skip just hymn/song number references
-                if re.match(r'^(Opening|Closing|Confession|Offertory|Thanksgiving|Communion)\s*(Hymn|Song)?\s*$', text, re.IGNORECASE):
-                    continue
-                if re.match(r'^(Hymn|Song)\s*[Nn]o\.?\s*:?\s*\d+\s*$', text, re.IGNORECASE):
-                    continue
-                # If we find text that's NOT just section/hymn labels, use it
-                has_alpha = len([c for c in text if c.isalpha()]) > 5
-                if has_alpha:
-                    first_line = text.split('\n')[0].strip()
-                    extracted_title = first_line if len(first_line) < 60 else first_line[:57] + "..."
-                    break
+    if not extracted_title and title_slide_idx is not None:
+        extracted_title = extract_title_from_slide(prs.slides[title_slide_idx])
 
     return title_slide_idx, content_indices, extracted_title
 
 
 # Global tracking of used slide ranges to prevent duplicates
 USED_SLIDE_RANGES = {}
-
-# Global variable to store template presentation for cloning
-TEMPLATE_REFERENCE_PRS = None
 
 def find_best_song_source(hymn_num, song_name):
     """
@@ -771,7 +767,7 @@ def find_best_song_source(hymn_num, song_name):
     
     Returns: (pptx_path, title_idx, content_indices, extracted_title) or (None, None, [], "")
     """
-    pptx_files = find_all_pptx_files(SEARCH_DIRS)
+    pptx_files = find_all_pptx_files(ENGLISH_SEARCH_DIRS)
     
     best_source = None
     best_count = 0
@@ -920,71 +916,20 @@ def create_title_bar(slide, prs, title_text):
     title_run.font.color.rgb = RGBColor(255, 255, 255)  # White text
 
 
-def clone_slide(prs, template_slide_index, template_prs):
-    """Clone a slide from the template presentation to preserve its layout and background."""
-    from pptx.oxml.xmlchemy import OxmlElement
-    import copy
-    
-    template_slide = template_prs.slides[template_slide_index]
-    
-    # Use the template slide's layout directly
-    # Import the layout from template to target presentation if not already there
-    template_layout = template_slide.slide_layout
-    
-    # Try to find if this exact layout already exists in target prs
-    matching_layout = None
-    for layout in prs.slide_layouts:
-        if layout._element == template_layout._element:
-            matching_layout = layout
-            break
-    
-    # If layout not found, use the template's layout (it should work across presentations from same master)
-    target_layout = matching_layout if matching_layout else template_layout
-    
-    # Add new slide with the layout
-    new_slide = prs.slides.add_slide(target_layout)
-    
-    # Copy all shapes from template slide, EXCEPT empty placeholders with default text
-    for shape in template_slide.shapes:
-        # Skip placeholder shapes that are empty or contain default "Click to add" text
-        if shape.is_placeholder and shape.has_text_frame:
-            try:
-                text = shape.text_frame.text.strip()
-                # Skip if empty or contains "click to add"
-                if not text or "click to add" in text.lower():
-                    continue  # Skip this placeholder
-            except:
-                pass  # If there's any error checking, include the shape
-        
-        el = shape.element
-        newel = deepcopy(el)
-        new_slide.shapes._spTree.insert_element_before(newel, 'p:extLst')
-    
-    return new_slide
 
-
-def add_title_slide(prs, layout, song_label, hymn_num, song_name="", template_prs=None, service_date="", show_box=True):
+def add_title_slide(prs, layout, song_label, hymn_num, song_name="", service_date="", show_box=True):
     """Add a title/intro slide for a song section using background images.
     
     Args:
         show_box: If True, adds a semi-transparent colored box behind the text.
                   If False (for Opening), text is directly on background.
     """
-    global TEMPLATE_REFERENCE_PRS
-    
     # Use blank layout to have full control
     blank_layout = prs.slide_layouts[11] if len(prs.slide_layouts) > 11 else prs.slide_layouts[6]
     slide = prs.slides.add_slide(blank_layout)
     
-    # Remove any placeholder shapes
-    shapes_to_remove = []
-    for shape in slide.shapes:
-        if shape.is_placeholder:
-            shapes_to_remove.append(shape)
-    
-    for shape in shapes_to_remove:
-        sp = shape._element
-        sp.getparent().remove(sp)
+    # Remove placeholders using helper
+    remove_placeholders(slide)
     
     # Add background image (full slide)
     bg_image_path = resolve_image_path("english_title_bg.png")
@@ -1066,26 +1011,8 @@ def add_title_slide(prs, layout, song_label, hymn_num, song_name="", template_pr
     run1.font.size = Pt(48)
     run1.font.bold = True  # Make it bold
     run1.font.color.rgb = RGBColor(255, 255, 255)
-    # Add text shadow
-    try:
-        from pptx.oxml.xmlchemy import OxmlElement
-        rPr = run1._r.get_or_add_rPr()
-        shadow = OxmlElement('a:effectLst')
-        outerShdw = OxmlElement('a:outerShdw')
-        outerShdw.set('blurRad', '38100')  # Shadow blur radius
-        outerShdw.set('dist', '38100')     # Shadow distance
-        outerShdw.set('dir', '2700000')    # Shadow direction (bottom)
-        outerShdw.set('algn', 'ctr')       # Alignment
-        srgbClr = OxmlElement('a:srgbClr')
-        srgbClr.set('val', '000000')       # Black shadow
-        alpha = OxmlElement('a:alpha')
-        alpha.set('val', '40000')          # 40% opacity
-        srgbClr.append(alpha)
-        outerShdw.append(srgbClr)
-        shadow.append(outerShdw)
-        rPr.append(shadow)
-    except Exception:
-        pass  # Shadow not critical
+    # Add text shadow using helper
+    add_text_shadow(run1)
     
     # Second line: Song title
     p2 = tf.add_paragraph()
@@ -1108,21 +1035,14 @@ def add_title_slide(prs, layout, song_label, hymn_num, song_name="", template_pr
     return slide
 
 
-def add_message_slide(prs, layout, template_prs=None, service_date=""):
+def add_message_slide(prs, layout, service_date=""):
     """Add a Message title slide (no hymn content)."""
     # Use blank layout
     blank_layout = prs.slide_layouts[11] if len(prs.slide_layouts) > 11 else prs.slide_layouts[6]
     slide = prs.slides.add_slide(blank_layout)
     
-    # Remove placeholders
-    shapes_to_remove = []
-    for shape in slide.shapes:
-        if shape.is_placeholder:
-            shapes_to_remove.append(shape)
-    
-    for shape in shapes_to_remove:
-        sp = shape._element
-        sp.getparent().remove(sp)
+    # Remove placeholders using helper
+    remove_placeholders(slide)
     
     # Add background image
     bg_image_path = resolve_image_path("english_title_bg.png")
@@ -1156,26 +1076,8 @@ def add_message_slide(prs, layout, template_prs=None, service_date=""):
     run.font.size = Pt(48)
     run.font.bold = True  # Make it bold
     run.font.color.rgb = RGBColor(255, 255, 255)
-    # Add text shadow
-    try:
-        from pptx.oxml.xmlchemy import OxmlElement
-        rPr = run._r.get_or_add_rPr()
-        shadow = OxmlElement('a:effectLst')
-        outerShdw = OxmlElement('a:outerShdw')
-        outerShdw.set('blurRad', '38100')
-        outerShdw.set('dist', '38100')
-        outerShdw.set('dir', '2700000')
-        outerShdw.set('algn', 'ctr')
-        srgbClr = OxmlElement('a:srgbClr')
-        srgbClr.set('val', '000000')
-        alpha = OxmlElement('a:alpha')
-        alpha.set('val', '40000')
-        srgbClr.append(alpha)
-        outerShdw.append(srgbClr)
-        shadow.append(outerShdw)
-        rPr.append(shadow)
-    except Exception:
-        pass  # Shadow not critical
+    # Add text shadow using helper
+    add_text_shadow(run)
     
     return slide
 
@@ -1184,17 +1086,8 @@ def add_holy_communion_intro_slide(prs, blank_layout, hymn_num, song_name=""):
     """Add a Holy Communion intro slide - blank slide with title bar and image."""
     slide = prs.slides.add_slide(blank_layout)
     
-    # Remove title placeholders
-    shapes_to_remove = []
-    for shape in slide.shapes:
-        if shape.is_placeholder:
-            ph = shape.placeholder_format
-            if ph.type in [1, 2, 3]:
-                shapes_to_remove.append(shape)
-    
-    for shape in shapes_to_remove:
-        sp = shape._element
-        sp.getparent().remove(sp)
+    # Remove placeholders using helper
+    remove_placeholders(slide)
     
     # Create the pink title bar with hymn info
     if hymn_num:
@@ -1442,17 +1335,23 @@ def update_title_bar_color(slide, color=TITLE_BAR_COLOR):
 # SECTION PROCESSING FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def process_opening_song(prs, title_layout, blank_layout, hymn_num, song_name, slide_counter, service_date=None):
-    """Process Opening Song section."""
-    label = "Opening"
+def process_standard_section(prs, title_layout, blank_layout, label, hymn_num, song_name, 
+                            slide_counter, service_date=None, show_box=True):
+    """
+    Process a standard song section (Opening, ThanksGiving, Offertory, Confession, Closing).
     
-    # Find the best source (most slides) across all PPT files
+    Args:
+        label: Section label (e.g., "Opening", "ThanksGiving", "Confession", etc.)
+        show_box: Whether to show the colored box on title slide (False for Opening)
+    
+    Returns: (updated_slide_counter, extracted_title)
+    """
     best_pf, t_idx, c_indices, extracted_title = find_best_song_source(hymn_num, song_name)
     
     if best_pf and c_indices:
         display_title = song_name if song_name else extracted_title
         print(f"  ✓ Found in PPT: {os.path.basename(best_pf)} ({len(c_indices)} content slides)")
-        add_title_slide(prs, title_layout, label, hymn_num, display_title, TEMPLATE_REFERENCE_PRS, service_date)
+        add_title_slide(prs, title_layout, label, hymn_num, display_title, service_date, show_box=show_box)
         slide_counter += 1
         num_added = clone_slides_from_source(
             best_pf, c_indices, prs, label, hymn_num, slide_counter,
@@ -1463,31 +1362,32 @@ def process_opening_song(prs, title_layout, blank_layout, hymn_num, song_name, s
     
     # Not found - add title only
     print(f"  ⚠ Song not found - adding title slide only")
-    add_title_slide(prs, title_layout, label, hymn_num, song_name if song_name else "(Song not found)", TEMPLATE_REFERENCE_PRS, service_date, show_box=False)
+    add_title_slide(prs, title_layout, label, hymn_num, song_name if song_name else "(Song not found)", service_date, show_box=show_box)
     return slide_counter + 1, song_name
+
+
+def process_opening_song(prs, title_layout, blank_layout, hymn_num, song_name, slide_counter, service_date=None):
+    """Process Opening Song section."""
+    return process_standard_section(prs, title_layout, blank_layout, "Opening", hymn_num, song_name, 
+                                   slide_counter, service_date, show_box=False)
 
 
 def process_thanksgiving_prayers(prs, title_layout, blank_layout, hymn_num, song_name, slide_counter, service_date=None):
     """Process ThanksGiving Prayers section (shown as B/A on summary, ThanksGiving on slides)."""
-    label = "ThanksGiving"
-    
-    best_pf, t_idx, c_indices, extracted_title = find_best_song_source(hymn_num, song_name)
-    
-    if best_pf and c_indices:
-        display_title = song_name if song_name else extracted_title
-        print(f"  ✓ Found in PPT: {os.path.basename(best_pf)} ({len(c_indices)} content slides)")
-        add_title_slide(prs, title_layout, label, hymn_num, display_title, TEMPLATE_REFERENCE_PRS, service_date, show_box=True)
-        slide_counter += 1
-        num_added = clone_slides_from_source(
-            best_pf, c_indices, prs, label, hymn_num, slide_counter,
-            blank_layout, display_title
-        )
-        slide_counter += num_added
-        return slide_counter, display_title
-    
-    print(f"  ⚠ Song not found - adding title slide only")
-    add_title_slide(prs, title_layout, label, hymn_num, song_name if song_name else "(Song not found)", TEMPLATE_REFERENCE_PRS, service_date, show_box=True)
-    return slide_counter + 1, song_name
+    return process_standard_section(prs, title_layout, blank_layout, "ThanksGiving", hymn_num, song_name, 
+                                   slide_counter, service_date, show_box=True)
+
+
+def process_confession(prs, title_layout, blank_layout, hymn_num, song_name, slide_counter, service_date=None):
+    """Process Confession section."""
+    return process_standard_section(prs, title_layout, blank_layout, "Confession", hymn_num, song_name, 
+                                   slide_counter, service_date, show_box=True)
+
+
+def process_closing_hymn(prs, title_layout, blank_layout, hymn_num, song_name, slide_counter, service_date=None):
+    """Process Closing Hymn section."""
+    return process_standard_section(prs, title_layout, blank_layout, "Closing", hymn_num, song_name, 
+                                   slide_counter, service_date, show_box=True)
 
 
 def process_offertory(prs, title_layout, blank_layout, hymn_num, song_name, slide_counter, service_date=None):
@@ -1499,7 +1399,7 @@ def process_offertory(prs, title_layout, blank_layout, hymn_num, song_name, slid
     if best_pf and c_indices:
         display_title = song_name if song_name else extracted_title
         print(f"  ✓ Found in PPT: {os.path.basename(best_pf)} ({len(c_indices)} content slides)")
-        add_title_slide(prs, title_layout, label, hymn_num, display_title, TEMPLATE_REFERENCE_PRS, service_date, show_box=True)
+        add_title_slide(prs, title_layout, label, hymn_num, display_title, service_date, show_box=True)
         slide_counter += 1
         num_added = clone_slides_from_source(
             best_pf, c_indices, prs, label, hymn_num, slide_counter,
@@ -1511,20 +1411,14 @@ def process_offertory(prs, title_layout, blank_layout, hymn_num, song_name, slid
     # Song not found - add title slide and QR code content slide
     print(f"  ⚠ Song not found - adding title slide with QR code")
     display_title = song_name if song_name else "(Song not found)"
-    add_title_slide(prs, title_layout, label, hymn_num, display_title, TEMPLATE_REFERENCE_PRS, service_date, show_box=True)
+    add_title_slide(prs, title_layout, label, hymn_num, display_title, service_date, show_box=True)
     slide_counter += 1
     
     # Add a content slide with QR code
     content_slide = prs.slides.add_slide(blank_layout)
     
-    # Remove any placeholder text boxes (like "Click to add title")
-    shapes_to_remove = []
-    for shape in content_slide.shapes:
-        if shape.is_placeholder:
-            shapes_to_remove.append(shape)
-    for shape in shapes_to_remove:
-        sp = shape.element
-        sp.getparent().remove(sp)
+    # Remove placeholders using helper
+    remove_placeholders(content_slide)
     
     # Create title bar using the standard function
     title_text = f"{label}: Hymn No {hymn_num}" if hymn_num else label
@@ -1550,32 +1444,9 @@ def process_offertory(prs, title_layout, blank_layout, hymn_num, song_name, slid
 
 def process_message(prs, title_layout, slide_counter, service_date=None):
     """Process Message section (title slide only)."""
-    add_message_slide(prs, title_layout, TEMPLATE_REFERENCE_PRS, service_date)
+    add_message_slide(prs, title_layout, service_date)
     print(f"  ✓ Added Message title slide")
     return slide_counter + 1
-
-
-def process_confession(prs, title_layout, blank_layout, hymn_num, song_name, slide_counter, service_date=None):
-    """Process Confession section."""
-    label = "Confession"
-    
-    best_pf, t_idx, c_indices, extracted_title = find_best_song_source(hymn_num, song_name)
-    
-    if best_pf and c_indices:
-        display_title = song_name if song_name else extracted_title
-        print(f"  ✓ Found in PPT: {os.path.basename(best_pf)} ({len(c_indices)} content slides)")
-        add_title_slide(prs, title_layout, label, hymn_num, display_title, TEMPLATE_REFERENCE_PRS, service_date, show_box=True)
-        slide_counter += 1
-        num_added = clone_slides_from_source(
-            best_pf, c_indices, prs, label, hymn_num, slide_counter,
-            blank_layout, display_title
-        )
-        slide_counter += num_added
-        return slide_counter, display_title
-    
-    print(f"  ⚠ Song not found - adding title slide only")
-    add_title_slide(prs, title_layout, label, hymn_num, song_name if song_name else "(Song not found)", TEMPLATE_REFERENCE_PRS, service_date, show_box=True)
-    return slide_counter + 1, song_name
 
 
 def process_holy_communion(prs, title_layout, blank_layout, hymn_num, song_name, slide_counter):
@@ -1608,97 +1479,32 @@ def process_holy_communion(prs, title_layout, blank_layout, hymn_num, song_name,
     return slide_counter + 1, song_name
 
 
-def process_closing_hymn(prs, title_layout, blank_layout, hymn_num, song_name, slide_counter, service_date=None):
-    """Process Closing Hymn section."""
-    label = "Closing"
-    
-    best_pf, t_idx, c_indices, extracted_title = find_best_song_source(hymn_num, song_name)
-    
-    if best_pf and c_indices:
-        display_title = song_name if song_name else extracted_title
-        print(f"  ✓ Found in PPT: {os.path.basename(best_pf)} ({len(c_indices)} content slides)")
-        add_title_slide(prs, title_layout, label, hymn_num, display_title, TEMPLATE_REFERENCE_PRS, service_date, show_box=True)
-        slide_counter += 1
-        num_added = clone_slides_from_source(
-            best_pf, c_indices, prs, label, hymn_num, slide_counter,
-            blank_layout, display_title
-        )
-        slide_counter += num_added
-        return slide_counter, display_title
-    
-    print(f"  ⚠ Song not found - adding title slide only")
-    add_title_slide(prs, title_layout, label, hymn_num, song_name if song_name else "(Song not found)", TEMPLATE_REFERENCE_PRS, service_date, show_box=True)
-    return slide_counter + 1, song_name
-
-
 def process_generic_song(prs, title_layout, blank_layout, label, hymn_num, song_name, slide_counter, service_date=None):
-    """Process any generic song section."""
-    best_pf, t_idx, c_indices, extracted_title = find_best_song_source(hymn_num, song_name)
-    
-    if best_pf and c_indices:
-        display_title = extracted_title if extracted_title else song_name
-        print(f"  ✓ Found in PPT: {os.path.basename(best_pf)} ({len(c_indices)} content slides)")
-        add_title_slide(prs, title_layout, label, hymn_num, display_title, TEMPLATE_REFERENCE_PRS, service_date, show_box=True)
-        slide_counter += 1
-        num_added = clone_slides_from_source(
-            best_pf, c_indices, prs, label, hymn_num, slide_counter,
-            blank_layout, display_title
-        )
-        slide_counter += num_added
-        return slide_counter, display_title
-    
-    print(f"  ⚠ Song not found - adding title slide only")
-    add_title_slide(prs, title_layout, label, hymn_num, song_name if song_name else "(Song not found)", TEMPLATE_REFERENCE_PRS, service_date, show_box=True)
-    return slide_counter + 1, song_name
+    """Process any generic song section (Dedication, etc.)."""
+    return process_standard_section(prs, title_layout, blank_layout, label, hymn_num, song_name, 
+                                   slide_counter, service_date, show_box=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SUMMARY SLIDE GENERATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def create_summary_slide(prs, title_layout, song_list, service_date=None, template_prs=None):
+def create_summary_slide(prs, title_layout, song_list, service_date=None):
     """
     Create a summary slide listing all songs in the service.
     
     Note: ThanksGiving is displayed as "B/A" on the summary slide only.
     Communion songs are grouped together with the label shown once.
-    Uses centered layout with title and song list.
+    Simple blank slide with title bar and song list.
     """
-    # Clone template slide to preserve background
-    if template_prs:
-        summary_slide = clone_slide(prs, 0, template_prs)
-    else:
-        summary_slide = prs.slides.add_slide(title_layout)
+    # Use blank layout
+    blank_layout = prs.slide_layouts[11] if len(prs.slide_layouts) > 11 else prs.slide_layouts[6]
+    summary_slide = prs.slides.add_slide(blank_layout)
     
-    # Remove all placeholder shapes (Click to add title, subtitle, etc.)
-    shapes_to_remove = []
-    for shape in summary_slide.shapes:
-        if shape.is_placeholder:
-            shapes_to_remove.append(shape)
+    # Remove placeholders
+    remove_placeholders(summary_slide)
     
-    # Remove identified placeholders
-    for shape in shapes_to_remove:
-        sp = shape.element
-        sp.getparent().remove(sp)
-    
-    # Update the date in the footer if provided
-    if service_date:
-        import re
-        # Find and update the footer text in the slide layout shapes
-        for shape in summary_slide.slide_layout.shapes:
-            if shape.has_text_frame:
-                text = shape.text_frame.text
-                # Look for the footer with date pattern "DD Month YYYY"
-                date_pattern = r'\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4}'
-                if re.search(date_pattern, text) and "Holy Communion Service" in text:
-                    # This is the footer - update the date
-                    for paragraph in shape.text_frame.paragraphs:
-                        for run in paragraph.runs:
-                            if re.search(date_pattern, run.text):
-                                run.text = re.sub(date_pattern, service_date, run.text)
-                                break
-    
-    # Add title bar at the top (same as content slides)
+    # Add title bar at the top
     title_bar = summary_slide.shapes.add_shape(
         MSO_AUTO_SHAPE_TYPE.RECTANGLE,
         Emu(0), Emu(0),
@@ -2034,7 +1840,7 @@ def generate_presentation(song_list, output_filename=None, service_date=None):
     
     # Refresh search directories based on current working directory
     global ENGLISH_SEARCH_DIRS
-    ENGLISH_SEARCH_DIRS = get_search_dirs("English")
+    ENGLISH_SEARCH_DIRS = get_english_search_dirs()
     
     if output_filename is None:
         today = datetime.now().strftime("%d %b %Y")
@@ -2047,7 +1853,7 @@ def generate_presentation(song_list, output_filename=None, service_date=None):
         output_path = os.path.join(BASE_DIR, output_filename)
     
     print(f"  Language: English")
-    print(f"  Search directories: {get_search_dirs('English')}")
+    print(f"  Search directories: {ENGLISH_SEARCH_DIRS}")
 
     def normalize_service_date(date_text):
         if not date_text:
@@ -2078,10 +1884,6 @@ def generate_presentation(song_list, output_filename=None, service_date=None):
 
     print(f"  Template: {template_path}")
     prs = Presentation(template_path)
-    
-    # Keep a reference template presentation for cloning slides
-    global TEMPLATE_REFERENCE_PRS
-    TEMPLATE_REFERENCE_PRS = Presentation(template_path)
 
     # Update date in slide masters/layouts if provided
     normalized_date = normalize_service_date(service_date)
